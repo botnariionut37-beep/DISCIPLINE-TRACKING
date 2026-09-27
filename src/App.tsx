@@ -5,7 +5,8 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Category, DayOfWeek, WeeklyChecks, RankId, RankDefinition, DAYS_OF_WEEK, DisciplineStats } from './types';
-import { getWeekKey, getWeekLabel, getOffsetWeekKey } from './utils/date';
+import { getWeekKey, getWeekLabel, getOffsetWeekKey, getCurrentDayName } from './utils/date';
+import { isAdminUser, canEditDay } from './utils/permissions';
 import { chime } from './utils/audio';
 import { calculateRankProgress, RANK_TIERS } from './utils/ranks';
 import { motion, AnimatePresence } from 'motion/react';
@@ -175,6 +176,7 @@ export default function App() {
 
   // User Authentication & Cloud Sync
   const { user } = useAuth();
+  const isAdmin = isAdminUser(user);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Leaderboard Arena State
@@ -186,6 +188,7 @@ export default function App() {
 
   const { syncStatus, lastSyncedAt, pushToCloud, forceSync } = useCloudSync({
     user,
+    isAdmin,
     categories,
     setCategories,
     checks,
@@ -356,6 +359,7 @@ export default function App() {
 
   // Handle checking a day
   const handleToggleCheck = (categoryId: string, day: DayOfWeek) => {
+    if (!canEditDay(weekKey, day, isAdmin)) return;
     setChecks(prev => {
       const updated = { ...prev };
       
@@ -416,6 +420,12 @@ export default function App() {
     setCategories(updatedCats);
     localStorage.setItem('discipline_categories', JSON.stringify(updatedCats));
 
+    if (!isAdmin) {
+      // Non-admins keep historical checks untouched; only the category list changes.
+      pushToCloud(updatedCats, checks, bonusQualifyingWeeks);
+      return;
+    }
+
     setChecks(prev => {
       const updatedChecks = { ...prev };
       Object.keys(updatedChecks).forEach(wKey => {
@@ -446,6 +456,7 @@ export default function App() {
 
   // Quick seed data to reset to pristine state is helpful for first-time explore
   const handleLoadDemoValues = () => {
+    if (!isAdmin) return;
     // Fills current week checks by randomly completing ~60% of checkboxes for high visual fidelity
     setChecks(prev => {
       const updated = { ...prev };
@@ -471,10 +482,22 @@ export default function App() {
   const handleClearWeekChecks = () => {
     setChecks(prev => {
       const updated = { ...prev };
-      if (updated[weekKey]) {
-        updated[weekKey] = {};
+      if (isAdmin) {
+        if (updated[weekKey]) updated[weekKey] = {};
+      } else {
+        // Non-admins can only clear today's checks.
+        if (weekKey !== currentRealWeekKey || !updated[weekKey]) return prev;
+        const today = getCurrentDayName();
+        const weekData = { ...updated[weekKey] };
+        Object.keys(weekData).forEach(catId => {
+          const catData = { ...weekData[catId] };
+          delete catData[today];
+          weekData[catId] = catData;
+        });
+        updated[weekKey] = weekData;
       }
       localStorage.setItem('discipline_checks', JSON.stringify(updated));
+      pushToCloud(categories, updated, bonusQualifyingWeeks);
       return updated;
     });
   };
@@ -573,7 +596,7 @@ export default function App() {
         }
 
         const hasCategories = Array.isArray(parsed.categories);
-        const hasChecks = parsed.checks && typeof parsed.checks === 'object';
+        const hasChecks = isAdmin && parsed.checks && typeof parsed.checks === 'object';
 
         if (!hasCategories && !hasChecks) {
           setImportStatus({ type: 'error', message: 'Invalid format: Make sure the file contains category rosters or habit tracking logs.' });
@@ -888,6 +911,7 @@ export default function App() {
                 checks={weekChecks} 
                 weekKey={weekKey}
                 onToggleCheck={handleToggleCheck}
+                isAdmin={isAdmin}
                 onEditCategoryTrigger={(cat) => {
                   // Scroll to admin and open edit modal
                   const el = document.getElementById('category-admin-section');

@@ -5,7 +5,7 @@
 
 import { Category, DayOfWeek, DAYS_OF_WEEK } from '../types';
 import * as LucideIcons from 'lucide-react';
-import { Check, Edit3, Sparkles } from 'lucide-react';
+import { Check, Edit3, Sparkles, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getDayDates, getWeekKey } from '../utils/date';
 import { chime } from '../utils/audio';
@@ -16,6 +16,7 @@ interface WeeklyGridProps {
   weekKey: string;
   onToggleCheck: (categoryId: string, day: DayOfWeek) => void;
   onEditCategoryTrigger: (cat: Category) => void;
+  isAdmin: boolean;
 }
 
 export default function WeeklyGrid({
@@ -24,6 +25,7 @@ export default function WeeklyGrid({
   weekKey,
   onToggleCheck,
   onEditCategoryTrigger,
+  isAdmin,
 }: WeeklyGridProps) {
   // Get calendar dates for this week key
   const dayDates = getDayDates(weekKey);
@@ -148,6 +150,10 @@ export default function WeeklyGrid({
         </div>
         <div className="hidden sm:flex gap-4 text-[10px] font-mono text-gray-500 uppercase tracking-widest">
           <span className="flex items-center gap-1.5">
+            <Lock size={10} aria-hidden="true" />
+            {isAdmin ? 'Admin: all days editable' : 'Only today editable'}
+          </span>
+          <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full border border-white/10 bg-[#0A0C10]" />
             Unchecked
           </span>
@@ -239,26 +245,44 @@ export default function WeeklyGrid({
                     {DAYS_OF_WEEK.map((day) => {
                       const isChecked = !!catChecks[day];
                       const isToday = day === todayName && weekKey === currentWeekKey;
+                      const editable = isAdmin || isToday;
 
                       return (
                         <div key={day} className="col-span-1 flex justify-center">
                           <motion.button
-                            onClick={() => handleToggleWrapper(cat.id, day, isChecked)}
-                            whileTap={{ scale: 0.92 }}
-                            className={`w-11 h-11 rounded-xl border flex items-center justify-center transition-all duration-300 relative cursor-pointer focus:outline-hidden ${colors.ring} ${
+                            onClick={() => {
+                              if (!editable) return;
+                              handleToggleWrapper(cat.id, day, isChecked);
+                            }}
+                            disabled={!editable}
+                            aria-disabled={!editable}
+                            whileTap={editable ? { scale: 0.92 } : undefined}
+                            className={`w-11 h-11 rounded-xl border flex items-center justify-center transition-all duration-300 relative focus:outline-hidden ${colors.ring} ${
+                              editable ? 'cursor-pointer' : 'cursor-not-allowed'
+                            } ${
                               isChecked
-                                ? `${colors.bg} border-transparent text-white shadow-lg shadow-emerald-500/5`
+                                ? `${colors.bg} border-transparent text-white shadow-lg shadow-emerald-500/5 ${editable ? '' : 'opacity-60'}`
                                 : isToday
                                 ? 'border-white/25 hover:border-white/40 bg-white/[0.02]'
-                                : 'border-white/10 hover:border-white/20 bg-[#0A0C10]'
+                                : editable
+                                ? 'border-white/10 hover:border-white/20 bg-[#0A0C10]'
+                                : 'border-white/5 bg-[#0A0C10] opacity-50'
                             }`}
                             id={`check-${cat.id}-${day}`}
-                            title={`Mark ${cat.name} as ${isChecked ? 'uncompleted' : 'completed'} for ${day}`}
+                            title={
+                              editable
+                                ? `Mark ${cat.name} as ${isChecked ? 'uncompleted' : 'completed'} for ${day}`
+                                : `Locked: only today can be checked`
+                            }
                           >
-                            <span className="absolute inset-0 bg-white/5 rounded-xl opacity-0 hover:opacity-100 transition-opacity" />
+                            {editable && (
+                              <span className="absolute inset-0 bg-white/5 rounded-xl opacity-0 hover:opacity-100 transition-opacity" />
+                            )}
                             
                             {/* Visual toggle feedback */}
-                            {isChecked ? (
+                            {!editable && !isChecked ? (
+                              <Lock size={11} className="text-gray-600" aria-hidden="true" />
+                            ) : isChecked ? (
                               <motion.div
                                 initial={{ scale: 0.5, opacity: 0 }}
                                 animate={{ scale: 1, opacity: 1 }}

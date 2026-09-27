@@ -7,6 +7,36 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { X, Lock, Mail, User as UserIcon, Sparkles, CheckCircle2, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 
+function getFriendlyAuthError(err: any, fallback: string): string {
+  switch (err?.code) {
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return 'Sign-in was cancelled.';
+    case 'auth/popup-blocked':
+      return 'Your browser blocked the sign-in popup. Allow popups for this site and try again.';
+    case 'auth/unauthorized-domain':
+      return `This domain (${window.location.hostname}) is not authorized for sign-in. Add it in Firebase Console → Authentication → Settings → Authorized domains.`;
+    case 'auth/operation-not-allowed':
+      return 'Email/password sign-in is disabled. Enable it in Firebase Console → Authentication → Sign-in method.';
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'Invalid email or password combination.';
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists. Try signing in.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/weak-password':
+      return 'Password must be at least 6 characters long.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please wait a moment and try again.';
+    case 'auth/network-request-failed':
+      return 'Network error. Check your connection and try again.';
+    default:
+      return err?.message || fallback;
+  }
+}
+
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -40,11 +70,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       await signInWithGoogle();
       onClose();
     } catch (err: any) {
-      if (err.code === 'auth/popup-closed-by-user') {
-        setErrorMsg('Sign-in was cancelled.');
-      } else {
-        setErrorMsg(err.message || 'Failed to sign in with Google.');
-      }
+      setErrorMsg(getFriendlyAuthError(err, 'Failed to sign in with Google.'));
     } finally {
       setIsLoading(false);
     }
@@ -71,15 +97,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         setSuccessMsg(`Password reset link sent to ${email}. Please check your inbox.`);
       }
     } catch (err: any) {
-      let friendly = err.message || 'Authentication error';
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        friendly = 'Invalid email or password combination.';
-      } else if (err.code === 'auth/email-already-in-use') {
-        friendly = 'An account with this email already exists. Try signing in.';
-      } else if (err.code === 'auth/invalid-email') {
-        friendly = 'Please enter a valid email address.';
-      }
-      setErrorMsg(friendly);
+      setErrorMsg(getFriendlyAuthError(err, 'Authentication error'));
     } finally {
       setIsLoading(false);
     }

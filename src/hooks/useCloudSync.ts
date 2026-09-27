@@ -6,11 +6,13 @@
 import { useEffect, useRef, useState, useCallback, Dispatch, SetStateAction } from 'react';
 import { User, doc, getDoc, setDoc, onSnapshot, db } from '../services/firebase';
 import { Category, WeeklyChecks } from '../types';
+import { applyTodayOnly } from '../utils/permissions';
 
 export type SyncStatus = 'local' | 'syncing' | 'synced' | 'error';
 
 interface UseCloudSyncProps {
   user: User | null;
+  isAdmin: boolean;
   categories: Category[];
   setCategories: Dispatch<SetStateAction<Category[]>>;
   checks: WeeklyChecks;
@@ -21,6 +23,7 @@ interface UseCloudSyncProps {
 
 export function useCloudSync({
   user,
+  isAdmin,
   categories,
   setCategories,
   checks,
@@ -50,14 +53,18 @@ export function useCloudSync({
         const snap = await getDoc(userDocRef);
 
         if (!snap.exists()) {
-          // Brand new user: upload currently loaded local data
+          // Brand new user: upload local data (non-admins only carry over today's checks)
+          const initialChecks = isAdmin ? checks : applyTodayOnly({}, checks);
+          isRemoteSyncRef.current = true;
+          setChecks(initialChecks);
+          localStorage.setItem('discipline_checks', JSON.stringify(initialChecks));
           await setDoc(userDocRef, {
             uid: user.uid,
             email: user.email || '',
             displayName: user.displayName || user.email?.split('@')[0] || 'Warrior',
             photoURL: user.photoURL || '',
             categories,
-            checks,
+            checks: initialChecks,
             bonusQualifyingWeeks,
             updatedAt: new Date().toISOString()
           });
@@ -78,9 +85,11 @@ export function useCloudSync({
 
           // Merge weekly checks
           const remoteChecks: WeeklyChecks = remoteData.checks || {};
-          const mergedChecks: WeeklyChecks = { ...remoteChecks };
+          let mergedChecks: WeeklyChecks = { ...remoteChecks };
 
-          Object.keys(checks).forEach(wKey => {
+          if (!isAdmin) {
+            mergedChecks = applyTodayOnly(remoteChecks, checks);
+          } else Object.keys(checks).forEach(wKey => {
             if (!mergedChecks[wKey]) {
               mergedChecks[wKey] = { ...checks[wKey] };
             } else {
@@ -167,7 +176,7 @@ export function useCloudSync({
       isSubscribed = false;
       unsubscribe();
     };
-  }, [user?.uid]);
+  }, [user?.uid, isAdmin]);
 
   // Debounced push to cloud when user modifies state
   const pushToCloud = useCallback((
