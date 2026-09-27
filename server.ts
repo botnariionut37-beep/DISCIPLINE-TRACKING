@@ -1,4 +1,5 @@
 import express from "express";
+import http from "http";
 import path from "path";
 import fs from "fs";
 import { execSync } from "child_process";
@@ -7,6 +8,7 @@ import { createServer as createViteServer } from "vite";
 async function startServer() {
   const app = express();
   const PORT = 3000;
+  const httpServer = http.createServer(app);
 
   // Serve the downloaded offline app package
   app.get("/api/download-app", (req, res) => {
@@ -40,8 +42,14 @@ async function startServer() {
 
   // Vite dev server middleware in non-production environments
   if (process.env.NODE_ENV !== "production") {
+    const hmrEnabled = process.env.DISABLE_HMR !== "true";
+    // Share the HTTP server so the HMR WebSocket uses the same origin/port as the page
+    // instead of Vite's default standalone port (24678), which proxies don't expose.
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: hmrEnabled ? { server: httpServer } : false,
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -54,7 +62,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Discipline full-stack server operating at http://localhost:${PORT}`);
   });
 }
