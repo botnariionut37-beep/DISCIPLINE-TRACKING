@@ -1,0 +1,114 @@
+{
+  "entities": {
+    "UserHabitData": {
+      "title": "UserHabitData",
+      "description": "User account data storing habit categories, weekly completion checks, and discipline rank progression.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "The unique Firebase Authentication user ID."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address associated with the user account."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The display name of the user."
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Profile photo URL if available."
+        },
+        "categories": {
+          "type": "array",
+          "description": "List of active and archived habit categories configured by the user."
+        },
+        "checks": {
+          "type": "object",
+          "description": "Weekly checks matrix mapping weekKey -> categoryId -> day -> boolean."
+        },
+        "bonusQualifyingWeeks": {
+          "type": "number",
+          "description": "Total count of promotional bonus weeks recorded."
+        },
+        "leaderboardSettings": {
+          "type": "object",
+          "description": "User privacy settings and custom callsign for public leaderboard."
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of the latest cloud synchronization."
+        }
+      },
+      "required": ["uid", "categories", "checks"]
+    },
+    "LeaderboardEntry": {
+      "title": "LeaderboardEntry",
+      "description": "Public community leaderboard snapshot representing a warrior's discipline rank, qualifying weeks, and current week completion stats.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The user ID of the competitor."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The warrior name or custom alias shown to others."
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Avatar URL."
+        },
+        "rankIndex": {
+          "type": "number",
+          "description": "Rank tier index (0 to 11)."
+        },
+        "rankName": {
+          "type": "string",
+          "description": "Name of the discipline tier."
+        },
+        "qualifyingWeeks": {
+          "type": "number",
+          "description": "Number of qualifying discipline weeks earned."
+        },
+        "disciplineScore": {
+          "type": "number",
+          "description": "Current week discipline rate percentage (0-100)."
+        },
+        "weeklyCompletedChecks": {
+          "type": "number",
+          "description": "Number of checks completed this week."
+        },
+        "weeklyTargetChecks": {
+          "type": "number",
+          "description": "Total target checks scheduled for this week."
+        },
+        "topHabits": {
+          "type": "array",
+          "description": "Summary list of user's active habit categories and their completion rates."
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Whether this entry is visible on the public leaderboard."
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of the last sync."
+        }
+      },
+      "required": ["userId", "displayName", "rankIndex", "rankName", "isPublic"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserHabitData",
+      "description": "Isolated per-user document storing their personal categories, habit checks, and rank progress."
+    },
+    "/leaderboard/{userId}": {
+      "schema": "LeaderboardEntry",
+      "description": "Public warrior leaderboard snapshot allowing users to compare ranks, completion rates, and top categories."
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Discipline Tracker",
+  "description": "A minimalist executive-level habit and discipline tracker that computes your real-time weekly discipline rate with gorgeous interactive stat gauges and responsive day-of-the-week completions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
