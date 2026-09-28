@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for Community Leaderboards: Rank tier & weekly discipline rate standings, top habit category progress, top-3 podium, warrior inspection card, public/private privacy toggle, and customizable warrior alias.",
-  "updatedAt":  "2026-09-27T08:45:31.432823298Z",
+  "summary":  "Implementation plan to require password creation with email verification links, restrict the 'Wipe Week' button to admin users only, and add All-Time (ranked by Rank Tier) vs Weekly (ranked by Discipline Rate) leaderboard tab toggle.",
+  "updatedAt":  "2026-09-28T13:04:02.587413783Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

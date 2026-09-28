@@ -1,16 +1,10 @@
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  onSnapshot, 
-  query, 
-  where 
-} from 'firebase/firestore';
-import { db } from './firebase';
+import { getSupabase } from './supabase';
 import { Category, DisciplineStats, UserRankProgress } from '../types';
 import { LeaderboardEntry, LeaderboardSettings, CompetitorHabitSummary } from '../types/leaderboard';
 
 const SETTINGS_KEY = 'DISCIPLINE_TRACKER_LEADERBOARD_SETTINGS';
+const COMMUNITY_LEADERBOARD_KEY = 'discipline_community_leaderboard';
+const LEADERBOARD_EVENT = 'discipline_leaderboard_updated';
 
 export const DEFAULT_LEADERBOARD_SETTINGS: LeaderboardSettings = {
   isPublic: true,
@@ -30,13 +24,57 @@ export function getLocalLeaderboardSettings(): LeaderboardSettings {
 export function saveLocalLeaderboardSettings(settings: LeaderboardSettings) {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    window.dispatchEvent(new CustomEvent(LEADERBOARD_EVENT));
   } catch (err) {
     console.error('Failed to save leaderboard settings', err);
   }
 }
 
+function getStoredCommunityEntries(): LeaderboardEntry[] {
+  try {
+    const raw = localStorage.getItem(COMMUNITY_LEADERBOARD_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as LeaderboardEntry[];
+    if (Array.isArray(parsed)) {
+      // Strictly exclude any seed/bot accounts
+      return parsed.filter(entry => entry.userId && !entry.userId.startsWith('seed-warrior-'));
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCommunityEntries(entries: LeaderboardEntry[]) {
+  try {
+    localStorage.setItem(COMMUNITY_LEADERBOARD_KEY, JSON.stringify(entries));
+    window.dispatchEvent(new CustomEvent(LEADERBOARD_EVENT));
+  } catch (err) {
+    console.error('Failed to save community entries', err);
+  }
+}
+
+function sortLeaderboardEntries(entries: LeaderboardEntry[]): LeaderboardEntry[] {
+  return [...entries].sort((a, b) => {
+    // 1. Rank Tier index (higher rank first)
+    if (b.rankIndex !== a.rankIndex) {
+      return b.rankIndex - a.rankIndex;
+    }
+    // 2. Qualifying weeks (stars / seniority)
+    if (b.qualifyingWeeks !== a.qualifyingWeeks) {
+      return b.qualifyingWeeks - a.qualifyingWeeks;
+    }
+    // 3. Discipline Score (weekly rate %)
+    if (b.disciplineScore !== a.disciplineScore) {
+      return b.disciplineScore - a.disciplineScore;
+    }
+    // 4. Completed checks count
+    return b.weeklyCompletedChecks - a.weeklyCompletedChecks;
+  });
+}
+
 /**
- * Publish the user's current progress snapshot to the public leaderboard collection
+ * Publish the user's current progress snapshot to the public Supabase & synchronized leaderboard
  */
 export async function publishLeaderboardSnapshot(
   userId: string,
@@ -46,9 +84,8 @@ export async function publishLeaderboardSnapshot(
   categories: Category[],
   settings: LeaderboardSettings
 ): Promise<void> {
-  if (!db || !userId) return;
+  if (!userId) return;
 
-  // Extract top habit category summaries
   const topHabits: CompetitorHabitSummary[] = categories.slice(0, 5).map(cat => {
     const catStat = stats.categoryCompletions[cat.id];
     return {
@@ -84,68 +121,128 @@ export async function publishLeaderboardSnapshot(
     updatedAt: new Date().toISOString()
   };
 
-  try {
-    const leaderDocRef = doc(db, 'leaderboard', userId);
-    await setDoc(leaderDocRef, entry, { merge: true });
-  } catch (error) {
-    console.error('Failed to publish leaderboard snapshot:', error);
+  // 1. Update synchronized community storage immediately
+  const existing = getStoredCommunityEntries();
+  const existingIdx = existing.findIndex(e => e.userId === userId);
+  if (existingIdx >= 0) {
+    existing[existingIdx] = entry;
+  } else {
+    existing.push(entry);
+  }
+  saveCommunityEntries(existing);
+
+  // 2. Upsert to Supabase if connected
+  const sb = getSupabase();
+  if (sb) {
+    try {
+      await sb.from('discipline_leaderboard').upsert({
+        user_id: entry.userId,
+        display_name: entry.displayName,
+        custom_alias: entry.customAlias,
+        photo_url: entry.photoURL,
+        rank_index: entry.rankIndex,
+        rank_id: entry.rankId,
+        rank_name: entry.rankName,
+        tier_category: entry.tierCategory,
+        qualifying_weeks: entry.qualifyingWeeks,
+        discipline_score: entry.disciplineScore,
+        weekly_completed_checks: entry.weeklyCompletedChecks,
+        weekly_target_checks: entry.weeklyTargetChecks,
+        top_habits: entry.topHabits,
+        is_public: entry.isPublic,
+        updated_at: entry.updatedAt
+      });
+    } catch (e) {
+      console.warn('[Supabase Leaderboard] Table upsert skipped:', e);
+    }
   }
 }
 
 /**
- * Subscribe to real-time community leaderboard updates for registered accounts only
+ * Subscribe to synchronized leaderboard updates across Supabase and local community store
  */
 export function subscribeToLeaderboard(
   currentUserId: string | null,
   onUpdate: (entries: LeaderboardEntry[]) => void
 ): () => void {
-  if (!db) {
-    onUpdate([]);
-    return () => {};
-  }
+  let isMounted = true;
 
-  try {
-    const q = query(collection(db, 'leaderboard'), where('isPublic', '==', true));
-    
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const realEntries: LeaderboardEntry[] = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data() as LeaderboardEntry;
-          // Ensure only valid registered entries with a userId are ranked
-          if (data && data.userId) {
-            realEntries.push(data);
-          }
-        });
+  const refreshEntries = async () => {
+    let combined = getStoredCommunityEntries();
 
-        // Sort by Rank Tier (descending), then Qualifying Weeks, then Discipline Score, then completed checks
-        realEntries.sort((a, b) => {
-          if (b.rankIndex !== a.rankIndex) {
-            return b.rankIndex - a.rankIndex;
-          }
-          if (b.qualifyingWeeks !== a.qualifyingWeeks) {
-            return b.qualifyingWeeks - a.qualifyingWeeks;
-          }
-          if (b.disciplineScore !== a.disciplineScore) {
-            return b.disciplineScore - a.disciplineScore;
-          }
-          return b.weeklyCompletedChecks - a.weeklyCompletedChecks;
-        });
+    // Query Supabase table if available
+    const sb = getSupabase();
+    if (sb) {
+      try {
+        const { data, error } = await sb
+          .from('discipline_leaderboard')
+          .select('*')
+          .eq('is_public', true);
 
-        onUpdate(realEntries);
-      },
-      (error) => {
-        console.warn('Leaderboard real-time listener error:', error);
-        onUpdate([]);
+        if (!error && Array.isArray(data) && data.length > 0) {
+          const remoteMapped: LeaderboardEntry[] = data.map((d: any) => ({
+            userId: d.user_id,
+            displayName: d.display_name || 'Warrior',
+            customAlias: d.custom_alias,
+            photoURL: d.photo_url,
+            rankIndex: Number(d.rank_index) || 1,
+            rankId: d.rank_id || 'bronz',
+            rankName: d.rank_name || 'Bronz',
+            tierCategory: d.tier_category || 'Foundation',
+            qualifyingWeeks: Number(d.qualifying_weeks) || 0,
+            disciplineScore: Number(d.discipline_score) || 0,
+            weeklyCompletedChecks: Number(d.weekly_completed_checks) || 0,
+            weeklyTargetChecks: Number(d.weekly_target_checks) || 35,
+            topHabits: d.top_habits || [],
+            isPublic: Boolean(d.is_public),
+            updatedAt: d.updated_at || new Date().toISOString()
+          }));
+
+          // Merge remote entries with local entries, filtering bots strictly
+          const map = new Map<string, LeaderboardEntry>();
+          combined
+            .filter(e => e.userId && !e.userId.startsWith('seed-warrior-'))
+            .forEach(e => map.set(e.userId, e));
+          remoteMapped
+            .filter(e => e.userId && !e.userId.startsWith('seed-warrior-'))
+            .forEach(e => map.set(e.userId, e));
+          combined = Array.from(map.values());
+        }
+      } catch (err) {
+        // Fallback to local entries seamlessly
       }
-    );
+    }
 
-    return unsubscribe;
-  } catch (err) {
-    console.error('Failed to initialize leaderboard subscription:', err);
-    onUpdate([]);
-    return () => {};
-  }
+    if (!isMounted) return;
+
+    // Filter public or current user entries (only real users, no seed warriors)
+    const visible = combined
+      .filter(e => e.userId && !e.userId.startsWith('seed-warrior-'))
+      .filter(e => e.isPublic || (currentUserId && e.userId === currentUserId));
+    const sorted = sortLeaderboardEntries(visible);
+    onUpdate(sorted);
+  };
+
+  // Initial load
+  refreshEntries();
+
+  // Listen for local and cross-tab updates
+  const handleUpdate = () => {
+    if (isMounted) refreshEntries();
+  };
+
+  window.addEventListener(LEADERBOARD_EVENT, handleUpdate);
+  window.addEventListener('storage', handleUpdate);
+
+  // Periodic refresh every 10 seconds for real-time community feel
+  const interval = setInterval(refreshEntries, 10000);
+
+  return () => {
+    isMounted = false;
+    window.removeEventListener(LEADERBOARD_EVENT, handleUpdate);
+    window.removeEventListener('storage', handleUpdate);
+    clearInterval(interval);
+  };
 }
+
 

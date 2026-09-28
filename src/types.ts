@@ -110,5 +110,6 @@ export interface UserRankProgress {
   qualifyingWeeks: string[]; // Keys of weeks meeting >= 80% rate
   downgradedWeeks: string[]; // Keys of weeks failing < 50% rate
   perfectWeeks: number;
+  eliteMaxStars: number; // Star count for weeks achieved with >= 80% discipline while at ELITE MAX
 }
 

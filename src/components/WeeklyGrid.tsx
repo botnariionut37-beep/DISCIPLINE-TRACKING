@@ -5,7 +5,7 @@
 
 import { Category, DayOfWeek, DAYS_OF_WEEK } from '../types';
 import * as LucideIcons from 'lucide-react';
-import { Check, Edit3, Sparkles } from 'lucide-react';
+import { Check, Edit3, Sparkles, Lock, ShieldCheck } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getDayDates, getWeekKey } from '../utils/date';
 import { chime } from '../utils/audio';
@@ -16,6 +16,7 @@ interface WeeklyGridProps {
   weekKey: string;
   onToggleCheck: (categoryId: string, day: DayOfWeek) => void;
   onEditCategoryTrigger: (cat: Category) => void;
+  isAdmin?: boolean;
 }
 
 export default function WeeklyGrid({
@@ -24,6 +25,7 @@ export default function WeeklyGrid({
   weekKey,
   onToggleCheck,
   onEditCategoryTrigger,
+  isAdmin = false,
 }: WeeklyGridProps) {
   // Get calendar dates for this week key
   const dayDates = getDayDates(weekKey);
@@ -145,6 +147,19 @@ export default function WeeklyGrid({
               </span>
             </div>
           )}
+
+          {/* Day Checking Indicator */}
+          {isAdmin ? (
+            <div className="px-2 py-0.5 rounded-full text-[10px] font-mono flex items-center gap-1.5 bg-amber-500/10 text-amber-300 border border-amber-500/20">
+              <ShieldCheck size={12} className="text-amber-400" />
+              <span>Full Access Unlocked</span>
+            </div>
+          ) : (
+            <div className="px-2 py-0.5 rounded-full text-[10px] font-mono flex items-center gap-1 bg-white/5 text-gray-400 border border-white/5">
+              <Lock size={10} className="text-gray-500" />
+              <span>Active Day Tracking</span>
+            </div>
+          )}
         </div>
         <div className="hidden sm:flex gap-4 text-[10px] font-mono text-gray-500 uppercase tracking-widest">
           <span className="flex items-center gap-1.5">
@@ -239,13 +254,22 @@ export default function WeeklyGrid({
                     {DAYS_OF_WEEK.map((day) => {
                       const isChecked = !!catChecks[day];
                       const isToday = day === todayName && weekKey === currentWeekKey;
+                      const canToggle = isAdmin || isToday;
 
                       return (
                         <div key={day} className="col-span-1 flex justify-center">
                           <motion.button
-                            onClick={() => handleToggleWrapper(cat.id, day, isChecked)}
-                            whileTap={{ scale: 0.92 }}
-                            className={`w-11 h-11 rounded-xl border flex items-center justify-center transition-all duration-300 relative cursor-pointer focus:outline-hidden ${colors.ring} ${
+                            onClick={() => {
+                              if (!canToggle) return;
+                              handleToggleWrapper(cat.id, day, isChecked);
+                            }}
+                            disabled={!canToggle}
+                            whileTap={canToggle ? { scale: 0.92 } : undefined}
+                            className={`w-11 h-11 rounded-xl border flex items-center justify-center transition-all duration-300 relative focus:outline-hidden ${
+                              !canToggle
+                                ? 'opacity-40 cursor-not-allowed border-dashed border-white/10 bg-[#07080B]'
+                                : 'cursor-pointer'
+                            } ${colors.ring} ${
                               isChecked
                                 ? `${colors.bg} border-transparent text-white shadow-lg shadow-emerald-500/5`
                                 : isToday
@@ -253,7 +277,11 @@ export default function WeeklyGrid({
                                 : 'border-white/10 hover:border-white/20 bg-[#0A0C10]'
                             }`}
                             id={`check-${cat.id}-${day}`}
-                            title={`Mark ${cat.name} as ${isChecked ? 'uncompleted' : 'completed'} for ${day}`}
+                            title={
+                              canToggle
+                                ? `Mark ${cat.name} as ${isChecked ? 'uncompleted' : 'completed'} for ${day}`
+                                : `Locked: Past and future days cannot be modified.`
+                            }
                           >
                             <span className="absolute inset-0 bg-white/5 rounded-xl opacity-0 hover:opacity-100 transition-opacity" />
                             
@@ -266,6 +294,8 @@ export default function WeeklyGrid({
                               >
                                 <Check size={14} className="stroke-[3.5]" />
                               </motion.div>
+                            ) : !canToggle ? (
+                              <Lock size={12} className="text-gray-600" />
                             ) : (
                               <span className="text-[9px] font-mono text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
                                 DONE

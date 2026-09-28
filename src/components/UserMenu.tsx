@@ -16,7 +16,8 @@ import {
   ShieldCheck, 
   Sparkles,
   ChevronDown,
-  Trophy
+  Trophy,
+  Camera
 } from 'lucide-react';
 
 interface UserMenuProps {
@@ -25,6 +26,7 @@ interface UserMenuProps {
   lastSyncedAt: Date | null;
   onForceSync?: () => void;
   onOpenLeaderboardSettings?: () => void;
+  onOpenProfilePhoto?: () => void;
 }
 
 export default function UserMenu({ 
@@ -32,9 +34,10 @@ export default function UserMenu({
   syncStatus, 
   lastSyncedAt,
   onForceSync,
-  onOpenLeaderboardSettings
+  onOpenLeaderboardSettings,
+  onOpenProfilePhoto
 }: UserMenuProps) {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin, isSupabaseConfigured } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -130,21 +133,42 @@ export default function UserMenu({
         <div className="absolute right-0 mt-2 w-72 bg-[#0C0E12] border border-white/10 rounded-3xl p-4 shadow-2xl backdrop-blur-xl z-50 animate-fade-in">
           {/* User Info Header */}
           <div className="flex items-center gap-3 pb-3 mb-3 border-b border-white/5">
-            {user.photoURL ? (
-              <img
-                src={user.photoURL}
-                alt="Profile"
-                className="w-10 h-10 rounded-full object-cover border border-emerald-500/50 shrink-0"
-              />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-mono text-sm font-bold flex items-center justify-center shrink-0">
-                {getInitials(user.displayName, user.email)}
+            <div className="relative group">
+              {user.photoURL ? (
+                <img
+                  src={user.photoURL}
+                  alt="Profile"
+                  className="w-11 h-11 rounded-2xl object-cover border border-emerald-500/50 shrink-0"
+                />
+              ) : (
+                <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-mono text-sm font-bold flex items-center justify-center shrink-0">
+                  {getInitials(user.displayName, user.email)}
+                </div>
+              )}
+              {onOpenProfilePhoto && (
+                <button
+                  onClick={() => {
+                    setIsOpen(false);
+                    onOpenProfilePhoto();
+                  }}
+                  title="Change profile picture"
+                  className="absolute -bottom-1 -right-1 p-1 bg-emerald-500 hover:bg-emerald-400 text-black rounded-lg shadow-md cursor-pointer transition-transform hover:scale-110"
+                >
+                  <Camera size={11} className="stroke-[2.5]" />
+                </button>
+              )}
+            </div>
+            <div className="overflow-hidden flex-1">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <p className="text-sm font-sans font-bold text-white truncate">
+                  {user.displayName || user.username || 'Warrior'}
+                </p>
+                {isAdmin && (
+                  <span className="px-1.5 py-0.2 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-mono font-bold">
+                    ADMIN
+                  </span>
+                )}
               </div>
-            )}
-            <div className="overflow-hidden">
-              <p className="text-sm font-sans font-bold text-white truncate">
-                {user.displayName || 'Warrior'}
-              </p>
               <p className="text-xs font-mono text-gray-400 truncate">
                 {user.email}
               </p>
@@ -194,6 +218,20 @@ export default function UserMenu({
               </button>
             )}
           </div>
+
+          {/* Change Profile Photo Button */}
+          {onOpenProfilePhoto && (
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                onOpenProfilePhoto();
+              }}
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 mb-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-sans font-medium text-xs transition-colors cursor-pointer border border-emerald-500/20"
+            >
+              <Camera size={13} />
+              <span>Change Profile Picture</span>
+            </button>
+          )}
 
           {/* Arena Privacy & Alias Button */}
           {onOpenLeaderboardSettings && (

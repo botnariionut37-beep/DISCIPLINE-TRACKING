@@ -1,99 +1,71 @@
-# Implementation Plan - Warrior Community Leaderboard
+# Implementation Plan: Auth Email Verification, Admin-Only Wipe Week & Dual Leaderboards (All-Time vs Weekly)
 
-Create an engaging, real-time Community Leaderboard where warriors can measure their discipline against peers, celebrate tier promotions, inspect competitor habit structures, and build stoic accountability while retaining full privacy controls.
+## User Requirements
+1. **Sign-up Flow with Password Creation & Email Verification Link**:
+   - Require users to create a secure password on registration.
+   - Send/generate a verification link sent via email (Supabase confirmation email if configured, with an interactive in-app verification link modal dialog fallback).
+   - Require email verification before logging in or completing registration.
+2. **Restrict "Wipe Week" Button to Admins Only**:
+   - Delete/hide the "Wipe Week" button for all regular users. Only show it if `isAdmin` is true.
+3. **Dual Leaderboards: All-Time vs Weekly**:
+   - Add a tab toggle between **All-Time** and **Weekly** in the leaderboard view.
+   - **All-Time Leaderboard**: Ranked primarily by **Rank Tier** (Rank Index), then qualifying weeks, then all-time execution.
+   - **Weekly Leaderboard**: Ranked primarily by **Discipline Rate %** for the active week, then completed check counts, then tier.
 
-## 1. Architectural Design & Ranking Algorithm
+---
 
-### Leaderboard Standing Hierarchy
-Standings are ordered by:
-1. **Discipline Rank Tier** (Highest tier first, from Level 12 "Ascended Paragon" down to Level 1 "Grounded Initiate").
-2. **Qualifying Weeks Count** (Tiebreaker within the same rank tier).
-3. **Current Week Discipline Completion Rate (%)** (Tiebreaker for current execution momentum).
+## User Review Required
+> [!IMPORTANT]
+> - Regular users will no longer see or have access to the "Wipe Week" button; only verified admins can wipe week check marks.
+> - New account signups will require email link verification. If using custom Supabase, it triggers Supabase confirmation; otherwise, an interactive email dispatch preview & one-click verification link will be shown in the UI.
 
-```
-   ┌────────────────────────────────────────────────────────┐
-   │            Community Leaderboard Ranking               │
-   ├────────────────────────────────────────────────────────┤
-   │ 1. Primary: Rank Tier Index (0-11)                     │
-   │ 2. Secondary: Qualifying Weeks (Discipline Longevity)   │
-   │ 3. Tertiary: Weekly Completion Rate (Current Execution)│
-   └────────────────────────────────────────────────────────┘
-```
+---
 
-### Firestore Schema: `leaderboard/{userId}`
-Each registered warrior maintains a public leaderboard document:
-- `userId`: string
-- `displayName`: string (warrior call-sign or display name)
-- `customAlias`: string | null (optional custom handle)
-- `photoURL`: string | null
-- `rankIndex`: number (0-11)
-- `rankName`: string (e.g. "Titan", "Ascended Paragon")
-- `qualifyingWeeks`: number
-- `disciplineScore`: number (current week execution rate, e.g. 92%)
-- `weeklyCompletedChecks`: number
-- `weeklyTargetChecks`: number
-- `topHabits`: Array of `{ id, name, icon, color, rate }` (user's active habit summaries)
-- `isPublic`: boolean (default `true`)
-- `updatedAt`: Firestore timestamp
+## Proposed Changes
 
-### Security Rules (`firestore.rules`)
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    match /leaderboard/{userId} {
-      // Anyone can read public entries or their own entry
-      allow read: if resource.data.isPublic == true || (request.auth != null && request.auth.uid == userId);
-      // Only authenticated users can write their own leaderboard entry
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-  }
-}
-```
+### 1. Hide "Wipe Week" Button for Non-Admins (`src/App.tsx`)
+- In `src/App.tsx`, wrap the "Wipe Week" button in an `{isAdmin && ...}` guard so regular users cannot see or trigger wiping habit data.
 
-## 2. User Experience & Visual Features
-1. **View Toggle in Header:**
-   - Seamless switch between **"My Matrix"** (the weekly habit tracker) and **"Leaderboard"** (the warrior arena).
-   - Shows total active warriors count and current user's standing.
-2. **Top 3 Champions Podium:**
-   - High-impact visual podium showcasing 1st (Gold), 2nd (Silver), and 3rd (Bronze) places with glowing discipline tier crowns, avatars, and completion rates.
-3. **Ranked Warrior Ladder:**
-   - Distinctive table with cyberpunk styling:
-     - Rank badge (#1, #2, #3, ...)
-     - Warrior name / custom alias + avatar
-     - 12-Tier Discipline badge & title with tier-specific glowing colors
-     - Weekly discipline progress bar & rate percentage
-     - Top habit pills (e.g. "Cold Plunge 100%", "Deep Work 85%", "Gym 100%")
-     - Instant highlight of the logged-in user's position
-4. **Warrior Detail Inspector Modal:**
-   - Clicking any warrior opens a detailed breakdown:
-     - Their discipline rank trajectory and qualifying weeks
-     - Breakdown of their habit categories and completion rates
-     - Motivating stats without exposing sensitive personal notes
-5. **Privacy & Alias Customization:**
-   - Quick settings drawer / modal:
-     - **Visibility Switch:** "Display profile on public leaderboard" (toggled ON by default, can be turned off anytime for full incognito mode).
-     - **Warrior Alias:** Set a custom alias (e.g., "VikingDiscipline", "IronMind") instead of Google email or name.
-6. **Automatic Sync Pipeline:**
-   - `useCloudSync.ts` automatically updates `leaderboard/{userId}` whenever habits, checks, or rank status change.
+### 2. Email Verification Flow (`src/services/supabase.ts`, `src/context/AuthContext.tsx`, `src/components/AuthModal.tsx`)
+- Update `StoredAccount` in `supabase.ts` to include `emailVerified: boolean` and `verificationToken: string`.
+- Update `appSignUp` to require email verification:
+  - If Supabase is connected, Supabase handles email verification links via its configured SMTP.
+  - For universal accounts, dispatch/generate a simulated email verification link and store the verification token.
+  - Add `appVerifyEmail(token: string)` and email verification check during `appSignIn` preventing unverified users from logging in until verified.
+- Update `AuthModal.tsx` to display the "Verify your email" state with:
+  - Clear notification that a verification email with a link was sent.
+  - Interactive "Simulate clicking verification link" button / input to verify immediately or open link.
+  - Password strength and confirmation check during registration.
 
-## 3. Implementation Steps
-1. **Update Blueprint & Security Rules:**
-   - Add `leaderboard` collection to `firebase-blueprint.json`.
-   - Update `firestore.rules` and run `deploy_firebase`.
-2. **Leaderboard Data Service & Hook:**
-   - Create `src/services/leaderboard.ts` to sync user stats to `leaderboard/{userId}` and fetch real-time leaderboard data.
-3. **UI Components:**
-   - `src/components/LeaderboardPodium.tsx`: Gold, Silver, Bronze champions display.
-   - `src/components/LeaderboardTable.tsx`: Full ranked list with filters (All-Time Rank vs Current Week Rate).
-   - `src/components/WarriorInspectorModal.tsx`: Detailed competitor profile inspection.
-   - `src/components/LeaderboardSettingsModal.tsx`: Alias and public/private privacy toggle.
-4. **Integration in `App.tsx`:**
-   - Header navigation tabs ("Habit Matrix" | "Leaderboard").
-   - Connect real-time synchronization so changes in habit checks instantly reflect on the leaderboard.
-5. **Verification & Linting:**
-   - Test leaderboard publishing, privacy toggling, alias changes, and real-time updates.
-   - Verify `compile_applet` and `lint_applet`.
+### 3. Dual Leaderboards: All-Time vs Weekly (`src/types/leaderboard.ts`, `src/components/LeaderboardTable.tsx`, `src/components/LeaderboardPodium.tsx`)
+- Add `leaderboardMode: 'all-time' | 'weekly'` state to `LeaderboardTable.tsx`.
+- Implement distinct sorting logic:
+  - **All-Time Mode**:
+    1. `rankIndex` (Rank Tier: Elite Max > Elite 4 > ... > Bronz)
+    2. `qualifyingWeeks` (Seniority / consistency)
+    3. `disciplineScore`
+  - **Weekly Mode**:
+    1. `disciplineScore` (Weekly rate %: 100% > 98% > ...)
+    2. `weeklyCompletedChecks` (Volume of completed tasks)
+    3. `rankIndex`
+- Add a segmented toggle control in the Leaderboard header:
+  - **All-Time (By Rank)**
+  - **Weekly (By Discipline Rate)**
+- Update the Podium and Table column highlights to reflect the active ranking criterion (e.g., highlighting Rank in All-Time and Discipline % in Weekly).
+
+---
+
+## Verification Plan
+1. **Compilation & Linting**:
+   - Run `lint_applet` and `compile_applet` to confirm zero TypeScript or build errors.
+2. **Wipe Week Button**:
+   - Confirm non-admin accounts do not see the "Wipe Week" button.
+   - Confirm admin accounts still have access to it.
+3. **Email Verification**:
+   - Register a new warrior account with email and password.
+   - Verify that the user is prompted to verify their email before access is granted.
+   - Click the verification link to confirm and successfully sign in.
+4. **Leaderboard Switching**:
+   - Toggle between **All-Time** and **Weekly**.
+   - Verify that All-Time orders warriors strictly by Rank Tier and Qualifying Weeks.
+   - Verify that Weekly orders warriors strictly by Discipline Rate %.

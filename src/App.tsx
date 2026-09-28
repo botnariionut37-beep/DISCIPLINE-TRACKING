@@ -25,6 +25,7 @@ import UserMenu from './components/UserMenu';
 import { LeaderboardTable } from './components/LeaderboardTable';
 import { WarriorInspectorModal } from './components/WarriorInspectorModal';
 import { LeaderboardSettingsModal } from './components/LeaderboardSettingsModal';
+import { ProfilePhotoModal } from './components/ProfilePhotoModal';
 import { 
   subscribeToLeaderboard, 
   publishLeaderboardSnapshot, 
@@ -174,8 +175,9 @@ export default function App() {
   const [celebrationRank, setCelebrationRank] = useState<RankDefinition | null>(null);
 
   // User Authentication & Cloud Sync
-  const { user } = useAuth();
+  const { user, isAdmin, updateUserProfile } = useAuth();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isProfilePhotoModalOpen, setIsProfilePhotoModalOpen] = useState(false);
 
   // Leaderboard Arena State
   const [activeTab, setActiveTab] = useState<'matrix' | 'leaderboard'>('matrix');
@@ -244,6 +246,7 @@ export default function App() {
   }, [rankProgress.currentRank.index]);
 
   const handleSelectRankOverride = (tierId: RankId | null) => {
+    if (!isAdmin) return;
     setRankOverride(tierId);
     if (tierId) {
       localStorage.setItem('discipline_rank_override', tierId);
@@ -258,6 +261,7 @@ export default function App() {
   };
 
   const handleAddQualifyingWeek = (amount = 1) => {
+    if (!isAdmin) return;
     setBonusQualifyingWeeks(prev => {
       const next = Math.max(0, prev + amount);
       localStorage.setItem('discipline_bonus_weeks', next.toString());
@@ -272,6 +276,7 @@ export default function App() {
   };
 
   const handleResetRankOverrides = () => {
+    if (!isAdmin) return;
     setRankOverride(null);
     setBonusQualifyingWeeks(0);
     localStorage.removeItem('discipline_rank_override');
@@ -431,12 +436,28 @@ export default function App() {
     });
   };
 
-  // Skip week handlers
+  // Skip week handlers: non-admins cannot navigate or check past/future days
   const handleNextWeek = () => {
+    if (!isAdmin) {
+      setImportStatus({
+        type: 'error',
+        title: 'Access Restricted',
+        message: 'Checking and navigating past or future days is locked.'
+      });
+      return;
+    }
     setWeekKey(prev => getOffsetWeekKey(prev, 1));
   };
 
   const handlePrevWeek = () => {
+    if (!isAdmin) {
+      setImportStatus({
+        type: 'error',
+        title: 'Access Restricted',
+        message: 'Checking and navigating past or future days is locked.'
+      });
+      return;
+    }
     setWeekKey(prev => getOffsetWeekKey(prev, -1));
   };
 
@@ -700,6 +721,7 @@ export default function App() {
                 size="sm"
                 showLabel
                 showSubtitle={false}
+                stars={rankProgress.eliteMaxStars}
                 onClick={() => setIsRankLadderOpen(true)}
                 className="cursor-pointer hover:border-emerald-500/40"
               />
@@ -790,6 +812,7 @@ export default function App() {
                 lastSyncedAt={lastSyncedAt}
                 onForceSync={forceSync}
                 onOpenLeaderboardSettings={() => setIsLeaderboardSettingsOpen(true)}
+                onOpenProfilePhoto={() => setIsProfilePhotoModalOpen(true)}
               />
 
               {weekKey !== currentRealWeekKey && (
@@ -801,14 +824,14 @@ export default function App() {
                 </button>
               )}
 
-              {categories.length > 0 && (
+              {isAdmin && categories.length > 0 && (
                 <button
                   onClick={handleClearWeekChecks}
-                  className="px-3.5 py-2 rounded-xl border border-dashed border-white/5 hover:border-rose-500/20 text-gray-500 hover:text-rose-450 text-xs font-sans font-medium transition-all cursor-pointer"
-                  title="Wipe data for the active week"
+                  className="px-3.5 py-2 rounded-xl border border-dashed border-rose-500/30 hover:border-rose-500/50 bg-rose-500/10 text-rose-300 hover:text-rose-200 text-xs font-sans font-medium transition-all cursor-pointer flex items-center gap-1.5"
+                  title="Admin action: Wipe data for the active week"
                   id="reset-week-ticks-btn"
                 >
-                  Wipe Week
+                  <span>Wipe Week (Admin)</span>
                 </button>
               )}
             </div>
@@ -844,40 +867,14 @@ export default function App() {
                 <RankCard 
                   rankProgress={rankProgress}
                   onOpenLadder={() => setIsRankLadderOpen(true)}
-                  onAddQualifyingWeek={() => handleAddQualifyingWeek(1)}
+                  onAddQualifyingWeek={handleAddQualifyingWeek}
+                  isAdmin={isAdmin}
                 />
               </div>
 
-              {/* Stoic Motivation & Quick Action Panel */}
-              <div className="lg:col-span-1 flex flex-col gap-6 justify-between">
+              {/* Stoic Motivation Panel */}
+              <div className="lg:col-span-1 flex flex-col justify-start">
                 <StoicQuoteViewer currentWeekKey={weekKey} />
-
-                {/* Quick Actions Helper */}
-                <div className="p-4 rounded-3xl border border-white/5 bg-[#0C0E12] flex items-center justify-between gap-3 shadow-xl">
-                  <div className="text-left">
-                    <p className="text-xs font-sans font-medium text-white">Daily Sandbox</p>
-                    <p className="text-[10px] text-gray-500">Seed sample checks or adjust custom habits</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleLoadDemoValues}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-emerald-400 hover:text-emerald-300 border border-white/5 text-[11px] font-mono font-medium transition-all cursor-pointer"
-                      title="Add visual sample checks to the current week"
-                    >
-                      <RefreshCw size={10} className="stroke-[2.5]" />
-                      <span>Seed</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        const el = document.getElementById('category-admin-section');
-                        el?.scrollIntoView({ behavior: 'smooth' });
-                      }}
-                      className="px-2.5 py-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 text-[11px] font-sans font-medium transition-all cursor-pointer border border-white/5"
-                    >
-                      Habits
-                    </button>
-                  </div>
-                </div>
               </div>
             </section>
 
@@ -888,6 +885,7 @@ export default function App() {
                 checks={weekChecks} 
                 weekKey={weekKey}
                 onToggleCheck={handleToggleCheck}
+                isAdmin={isAdmin}
                 onEditCategoryTrigger={(cat) => {
                   // Scroll to admin and open edit modal
                   const el = document.getElementById('category-admin-section');
@@ -1203,6 +1201,7 @@ export default function App() {
         onAddQualifyingWeek={handleAddQualifyingWeek}
         onResetRankOverrides={handleResetRankOverrides}
         currentOverrideRankId={rankOverride}
+        isAdmin={isAdmin}
       />
 
       {/* Celebratory Promotion Modal */}
@@ -1232,6 +1231,28 @@ export default function App() {
         settings={leaderboardSettings}
         onSaveSettings={handleSaveLeaderboardSettings}
         defaultDisplayName={user?.displayName || (user?.email ? user.email.split('@')[0] : 'Warrior')}
+      />
+
+      {/* Warrior Profile Photo Selection Modal */}
+      <ProfilePhotoModal
+        isOpen={isProfilePhotoModalOpen}
+        onClose={() => setIsProfilePhotoModalOpen(false)}
+        currentPhotoURL={user?.photoURL || null}
+        displayName={user?.displayName || user?.username || 'Warrior'}
+        onSavePhoto={async (newPhotoURL) => {
+          await updateUserProfile({ photoURL: newPhotoURL });
+          // If user is currently logged in, re-publish snapshot with new avatar to update arena immediately
+          if (user?.uid) {
+            await publishLeaderboardSnapshot(
+              user.uid,
+              { ...user, photoURL: newPhotoURL },
+              rankProgress,
+              calculatedStats,
+              categories,
+              leaderboardSettings
+            );
+          }
+        }}
       />
     </div>
   );

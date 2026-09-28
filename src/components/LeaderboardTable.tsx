@@ -266,7 +266,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
       )}
 
       {/* Main Rankings List */}
-      {entries.length > 0 && (
+      {entries.length > 0 ? (
         <div className="rounded-2xl border border-white/10 bg-[#0E1118]/80 backdrop-blur-md overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -355,6 +355,11 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                       >
                         <ShieldCheck className="w-3.5 h-3.5" />
                         <span>{rankMeta.name}</span>
+                        {rankMeta.id === 'elite_max' && warrior.qualifyingWeeks > 11 && (
+                          <span className="text-amber-400 font-mono font-bold">
+                            ⭐x{warrior.qualifyingWeeks - 11}
+                          </span>
+                        )}
                         <span className="text-[10px] opacity-70">({rankMeta.tierCategory})</span>
                       </div>
                     </td>
@@ -437,6 +442,27 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
           </table>
         </div>
       </div>
+      ) : (
+        <div className="rounded-3xl border border-white/10 bg-[#0E1118]/80 p-12 text-center text-slate-400 space-y-4 shadow-xl">
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 mx-auto flex items-center justify-center">
+            <Trophy className="w-8 h-8" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-white mb-1">The Arena is Ready</h3>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+              All artificial bots have been removed. Sign in or complete your habit checks to claim the #1 spot on the community leaderboard!
+            </p>
+          </div>
+          {!currentUserId && onOpenAuth && (
+            <button
+              onClick={onOpenAuth}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-black font-bold text-xs shadow-lg shadow-emerald-500/20 hover:scale-105 transition-transform cursor-pointer"
+            >
+              <User className="w-4 h-4" />
+              <span>Sign In & Claim Your Rank</span>
+            </button>
+          )}
+        </div>
       )}
 
     </div>

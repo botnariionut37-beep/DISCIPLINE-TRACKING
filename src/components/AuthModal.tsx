@@ -5,7 +5,24 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { X, Lock, Mail, User as UserIcon, Sparkles, CheckCircle2, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
+import { 
+  X, 
+  Lock, 
+  Mail, 
+  User as UserIcon, 
+  Sparkles, 
+  CheckCircle2, 
+  AlertCircle, 
+  ArrowRight, 
+  ShieldCheck,
+  Database,
+  AtSign,
+  KeyRound,
+  ExternalLink,
+  Send,
+  RefreshCw
+} from 'lucide-react';
+import { ADMIN_EMAILS } from '../utils/admin';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -13,25 +30,40 @@ interface AuthModalProps {
 }
 
 export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
-  const { signInWithGoogle, signInWithEmail, signUpWithEmail, sendPasswordReset } = useAuth();
+  const { 
+    signInWithGoogle, 
+    signInWithEmail, 
+    signUpWithEmail, 
+    verifyEmail,
+    resendVerification,
+    sendPasswordReset,
+    isSupabaseConfigured,
+    saveSupabaseConfig,
+    clearSupabaseConfig,
+    storedSupabaseConfig
+  } = useAuth();
 
-  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot' | 'supabase_settings' | 'google_prompt' | 'verification_sent'>('signin');
+  const [emailOrUsername, setEmailOrUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [googleAccountEmail, setGoogleAccountEmail] = useState('');
+  const [googleAccountName, setGoogleAccountName] = useState('');
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
+  const [pendingVerificationLink, setPendingVerificationLink] = useState('');
+  const [manualTokenInput, setManualTokenInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  if (!isOpen) return null;
+  // Supabase Config fields
+  const [supabaseUrl, setSupabaseUrl] = useState(storedSupabaseConfig.url || '');
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState(storedSupabaseConfig.anonKey || '');
 
-  const resetForm = () => {
-    setEmail('');
-    setPassword('');
-    setDisplayName('');
-    setErrorMsg(null);
-    setSuccessMsg(null);
-  };
+  if (!isOpen) return null;
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
@@ -40,9 +72,9 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       await signInWithGoogle();
       onClose();
     } catch (err: any) {
-      if (err.code === 'auth/popup-closed-by-user') {
-        setErrorMsg('Sign-in was cancelled.');
-      } else {
+      if (err.code === 'DOMAIN_FALLBACK_REQUIRED' || (err.message && err.message.includes('DOMAIN_FALLBACK_REQUIRED'))) {
+        setMode('google_prompt');
+      } else if (err.message && !err.message.includes('cancelled')) {
         setErrorMsg(err.message || 'Failed to sign in with Google.');
       }
     } finally {
@@ -50,7 +82,61 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     }
   };
 
-  const handleEmailAuth = async (e: React.FormEvent) => {
+  const handleGoogleFallbackSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!googleAccountEmail.includes('@')) {
+      setErrorMsg('Please enter a valid Google email address.');
+      return;
+    }
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      await signInWithGoogle(googleAccountEmail, googleAccountName);
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to sign in with Google account.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyEmail = async (tokenToVerify?: string) => {
+    const token = tokenToVerify || manualTokenInput.trim() || pendingVerificationEmail;
+    if (!token) {
+      setErrorMsg('Please enter your verification token or email address.');
+      return;
+    }
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      await verifyEmail(token);
+      setSuccessMsg('Email verified successfully! You are now logged in.');
+      setTimeout(() => {
+        onClose();
+      }, 1000);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Verification failed. Please check the link or resend.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResendLink = async () => {
+    if (!pendingVerificationEmail) return;
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      const newLink = await resendVerification(pendingVerificationEmail);
+      setPendingVerificationLink(newLink);
+      setSuccessMsg(`New verification link generated for ${pendingVerificationEmail}!`);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to resend verification link.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setErrorMsg(null);
@@ -58,46 +144,80 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
     try {
       if (mode === 'signin') {
-        await signInWithEmail(email, password);
+        await signInWithEmail(emailOrUsername, password);
         onClose();
       } else if (mode === 'signup') {
+        if (!email.includes('@')) {
+          throw new Error('Please enter a valid email address.');
+        }
         if (password.length < 6) {
           throw new Error('Password must be at least 6 characters long.');
         }
-        await signUpWithEmail(email, password, displayName);
-        onClose();
+        if (confirmPassword && password !== confirmPassword) {
+          throw new Error('Passwords do not match. Please re-enter your password.');
+        }
+        if (!username.trim()) {
+          throw new Error('Please choose a username.');
+        }
+        const result = await signUpWithEmail(email, password, displayName || username, username);
+        if (result.needsEmailVerification) {
+          setPendingVerificationEmail(email);
+          setPendingVerificationLink(result.verificationLink || '');
+          setMode('verification_sent');
+          setSuccessMsg(`Verification link dispatched to ${email}!`);
+        } else {
+          onClose();
+        }
       } else if (mode === 'forgot') {
+        if (!email.includes('@')) {
+          throw new Error('Please enter your registered email address.');
+        }
         await sendPasswordReset(email);
-        setSuccessMsg(`Password reset link sent to ${email}. Please check your inbox.`);
+        setSuccessMsg(`Recovery link sent to ${email}. Please check your inbox.`);
       }
     } catch (err: any) {
-      let friendly = err.message || 'Authentication error';
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        friendly = 'Invalid email or password combination.';
-      } else if (err.code === 'auth/email-already-in-use') {
-        friendly = 'An account with this email already exists. Try signing in.';
-      } else if (err.code === 'auth/invalid-email') {
-        friendly = 'Please enter a valid email address.';
+      if (err.code === 'EMAIL_NOT_VERIFIED' || (err.message && err.message.includes('EMAIL_NOT_VERIFIED'))) {
+        setPendingVerificationEmail(err.email || emailOrUsername);
+        if (err.verificationToken) {
+          setPendingVerificationLink(`${window.location.origin}/#verify_email?token=${err.verificationToken}&email=${encodeURIComponent(err.email || emailOrUsername)}`);
+        }
+        setMode('verification_sent');
+        setErrorMsg('Please verify your email address before logging in.');
+      } else {
+        setErrorMsg(err.message || 'Authentication failed. Please verify your credentials.');
       }
-      setErrorMsg(friendly);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleSaveSupabase = (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      saveSupabaseConfig(supabaseUrl, supabaseAnonKey);
+      setSuccessMsg('Supabase configuration saved! Connected to custom project.');
+      setTimeout(() => {
+        setMode('signin');
+        setSuccessMsg(null);
+      }, 1500);
+    } catch (err: any) {
+      setErrorMsg('Failed to save Supabase config.');
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
       <div 
         className="relative w-full max-w-md bg-[#0C0E12] border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Subtle background glow */}
+        {/* Decorative background glow */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -z-10 pointer-events-none" />
         
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 text-gray-400 hover:text-white p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
+          className="absolute top-5 right-5 text-gray-400 hover:text-white p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
           title="Close modal"
         >
           <X size={18} />
@@ -105,63 +225,67 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
         {/* Header */}
         <div className="mb-6">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono mb-3">
-            <ShieldCheck size={14} />
-            <span>Cloud Progress Protection</span>
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono">
+              <ShieldCheck size={14} />
+              <span>Multi-Domain Free Cloud Auth</span>
+            </div>
+
+            <button
+              onClick={() => {
+                setErrorMsg(null);
+                setSuccessMsg(null);
+                setMode(mode === 'supabase_settings' ? 'signin' : 'supabase_settings');
+              }}
+              className="text-[11px] font-mono text-gray-400 hover:text-emerald-400 flex items-center gap-1 cursor-pointer transition-colors"
+              title="Configure custom Supabase project credentials"
+            >
+              <Database size={12} />
+              <span>{isSupabaseConfigured ? 'Supabase Active' : 'Supabase Config'}</span>
+            </button>
           </div>
+
           <h2 className="text-xl sm:text-2xl font-sans font-bold text-white tracking-tight">
             {mode === 'signin' && 'Sign In to Your Account'}
-            {mode === 'signup' && 'Create Your Warrior Account'}
-            {mode === 'forgot' && 'Reset Your Password'}
+            {mode === 'signup' && 'Create Warrior Account'}
+            {mode === 'forgot' && 'Reset Password'}
+            {mode === 'supabase_settings' && 'Custom Supabase Setup'}
+            {mode === 'google_prompt' && 'Google Account Sign In'}
+            {mode === 'verification_sent' && 'Verify Your Email'}
           </h2>
           <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
-            {mode === 'forgot'
-              ? 'Enter your registered email address to receive recovery instructions.'
-              : 'Sign in to never lose your discipline streaks, habit matrices, or 12-tier ranks across any device.'}
-          </p>
-        </div>
-
-        {/* Notice about auto-merging existing progress */}
-        <div className="mb-6 p-3 rounded-2xl bg-[#12161E] border border-white/5 flex items-start gap-3">
-          <Sparkles size={16} className="text-emerald-400 shrink-0 mt-0.5" />
-          <p className="text-[11px] text-gray-300 font-sans leading-relaxed">
-            <strong className="text-emerald-400 font-semibold">Automatic Cloud Merge:</strong> Your existing habits and rank progress on this device will automatically merge into your account upon login.
+            {mode === 'verification_sent'
+              ? `We have generated an email verification link for ${pendingVerificationEmail || 'your account'}. Click the link to complete verification and sign in.`
+              : mode === 'google_prompt'
+              ? 'Sign in directly with your Google account credentials.'
+              : mode === 'supabase_settings'
+              ? 'Connect your custom Supabase database and authentication project to allow unlimited free domains (e.g. vercel.app).'
+              : mode === 'forgot'
+              ? 'Enter your registered email to receive account recovery instructions.'
+              : 'Works seamlessly across all domains (Vercel, custom URLs, localhost) with free accounts.'}
           </p>
         </div>
 
         {/* Google One-Click Button */}
-        {mode !== 'forgot' && (
+        {mode !== 'forgot' && mode !== 'supabase_settings' && mode !== 'google_prompt' && mode !== 'verification_sent' && (
           <>
             <button
               onClick={handleGoogleSignIn}
               disabled={isLoading}
               className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-2xl bg-white hover:bg-gray-100 text-gray-900 font-sans font-semibold text-sm transition-all duration-200 shadow-lg hover:shadow-emerald-500/10 cursor-pointer disabled:opacity-60"
             >
-              {/* Google G SVG */}
               <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.14z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.94 0 12s.45 3.84 1.25 5.42l4.03-3.15z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                />
+                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.14z" />
+                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
+                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.94 0 12s.45 3.84 1.25 5.42l4.03-3.15z" />
+                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
               </svg>
-              <span>Continue with Google</span>
+              <span>Continue with Google / Gmail</span>
             </button>
 
-            <div className="flex items-center gap-3 my-5">
+            <div className="flex items-center gap-3 my-4">
               <div className="flex-1 h-px bg-white/10" />
-              <span className="text-[11px] font-mono text-gray-500 uppercase tracking-widest">or email</span>
+              <span className="text-[11px] font-mono text-gray-500 uppercase tracking-widest">or email & password</span>
               <div className="flex-1 h-px bg-white/10" />
             </div>
           </>
@@ -181,9 +305,39 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
           </div>
         )}
 
-        {/* Email & Password Form */}
-        <form onSubmit={handleEmailAuth} className="space-y-3.5">
-          {mode === 'signup' && (
+        {/* Google Direct Sign-In Form (for custom domains where popup is restricted) */}
+        {mode === 'google_prompt' ? (
+          <form onSubmit={handleGoogleFallbackSubmit} className="space-y-3.5">
+            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-3 mb-2">
+              <svg className="w-6 h-6 shrink-0" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.14z" />
+                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
+                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.94 0 12s.45 3.84 1.25 5.42l4.03-3.15z" />
+                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
+              </svg>
+              <div className="text-xs text-gray-300">
+                <span className="font-semibold text-white">Google Account Verification</span>
+                <p className="text-[11px] text-gray-400">Sign in with your Google email address.</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                Google Email Address
+              </label>
+              <div className="relative">
+                <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                <input
+                  type="email"
+                  required
+                  value={googleAccountEmail}
+                  onChange={(e) => setGoogleAccountEmail(e.target.value)}
+                  placeholder="yourname@gmail.com"
+                  className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                />
+              </div>
+            </div>
+
             <div>
               <label className="block text-[11px] font-mono text-gray-400 mb-1">
                 Display Name (Optional)
@@ -192,133 +346,301 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 <UserIcon size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
                 <input
                   type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Marcus Aurelius"
+                  value={googleAccountName}
+                  onChange={(e) => setGoogleAccountName(e.target.value)}
+                  placeholder="Warrior"
                   className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
                 />
               </div>
             </div>
-          )}
 
-          <div>
-            <label className="block text-[11px] font-mono text-gray-400 mb-1">
-              Email Address
-            </label>
-            <div className="relative">
-              <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full mt-2 py-3 px-4 rounded-2xl bg-white hover:bg-gray-100 text-gray-900 font-sans font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer disabled:opacity-60 shadow-lg"
+            >
+              {isLoading ? (
+                <span className="inline-block w-4 h-4 border-2 border-gray-950 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <span>Sign In with Google</span>
+                  <ArrowRight size={15} />
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setErrorMsg(null);
+                setMode('signin');
+              }}
+              className="w-full text-center text-xs text-gray-400 hover:text-white pt-2 cursor-pointer"
+            >
+              Cancel and return to sign in
+            </button>
+          </form>
+        ) : mode === 'supabase_settings' ? (
+          <form onSubmit={handleSaveSupabase} className="space-y-3.5">
+            <div>
+              <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                Supabase Project URL
+              </label>
               <input
-                type="email"
+                type="url"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="warrior@discipline.app"
-                className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                value={supabaseUrl}
+                onChange={(e) => setSupabaseUrl(e.target.value)}
+                placeholder="https://your-project.supabase.co"
+                className="w-full bg-[#161A22] border border-white/10 rounded-2xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors font-mono"
               />
             </div>
-          </div>
 
-          {mode !== 'forgot' && (
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-mono text-gray-400">
-                  Password
-                </label>
-                {mode === 'signin' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('forgot');
-                      setErrorMsg(null);
-                      setSuccessMsg(null);
-                    }}
-                    className="text-[10px] font-mono text-emerald-400 hover:underline"
-                  >
-                    Forgot?
-                  </button>
-                )}
-              </div>
-              <div className="relative">
-                <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
-                />
-              </div>
+              <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                Supabase Anon / Public Key
+              </label>
+              <input
+                type="text"
+                required
+                value={supabaseAnonKey}
+                onChange={(e) => setSupabaseAnonKey(e.target.value)}
+                placeholder="eyJhbGciOiJIUzI1NiIsInR..."
+                className="w-full bg-[#161A22] border border-white/10 rounded-2xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors font-mono"
+              />
             </div>
-          )}
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full mt-2 py-3 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-sans font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer disabled:opacity-60"
-          >
-            {isLoading ? (
-              <span className="inline-block w-4 h-4 border-2 border-gray-950 border-t-transparent rounded-full animate-spin" />
-            ) : (
+            <div className="flex gap-2 pt-2">
+              <button
+                type="submit"
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-sans font-bold text-sm transition-all cursor-pointer"
+              >
+                Save Supabase Credentials
+              </button>
+
+              {isSupabaseConfigured && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearSupabaseConfig();
+                    setSupabaseUrl('');
+                    setSupabaseAnonKey('');
+                    setSuccessMsg('Supabase config cleared; using universal multi-domain mode.');
+                  }}
+                  className="px-4 py-2.5 rounded-2xl bg-white/5 hover:bg-rose-500/10 text-gray-400 hover:text-rose-400 border border-white/10 text-xs font-mono cursor-pointer"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setMode('signin')}
+              className="w-full text-center text-xs text-emerald-400 hover:underline pt-2 cursor-pointer"
+            >
+              Back to Sign In
+            </button>
+          </form>
+        ) : (
+          /* Email / Username & Password Form */
+          <form onSubmit={handleAuthSubmit} className="space-y-3">
+            {mode === 'signin' && (
+              <div>
+                <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                  Email or Username
+                </label>
+                <div className="relative">
+                  <AtSign size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    type="text"
+                    required
+                    value={emailOrUsername}
+                    onChange={(e) => setEmailOrUsername(e.target.value)}
+                    placeholder="botnariionut37@gmail.com or username"
+                    className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                  />
+                </div>
+              </div>
+            )}
+
+            {mode === 'signup' && (
               <>
-                <span>
-                  {mode === 'signin' && 'Sign In'}
-                  {mode === 'signup' && 'Create Account'}
-                  {mode === 'forgot' && 'Send Reset Link'}
-                </span>
-                <ArrowRight size={15} />
+                <div>
+                  <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="warrior@discipline.app"
+                      className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                    Username
+                  </label>
+                  <div className="relative">
+                    <AtSign size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <input
+                      type="text"
+                      required
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="spartan_will"
+                      className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                    Display Name (Optional)
+                  </label>
+                  <div className="relative">
+                    <UserIcon size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <input
+                      type="text"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="Marcus Aurelius"
+                      className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                    />
+                  </div>
+                </div>
               </>
             )}
-          </button>
-        </form>
+
+            {mode === 'forgot' && (
+              <div>
+                <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                  Registered Email Address
+                </label>
+                <div className="relative">
+                  <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="warrior@discipline.app"
+                    className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                  />
+                </div>
+              </div>
+            )}
+
+            {mode !== 'forgot' && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-mono text-gray-400">
+                    Password
+                  </label>
+                  {mode === 'signin' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('forgot');
+                        setErrorMsg(null);
+                        setSuccessMsg(null);
+                      }}
+                      className="text-[10px] font-mono text-emerald-400 hover:underline cursor-pointer"
+                    >
+                      Forgot?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                  />
+                </div>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full mt-2 py-3 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-sans font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer disabled:opacity-60 shadow-lg shadow-emerald-500/20"
+            >
+              {isLoading ? (
+                <span className="inline-block w-4 h-4 border-2 border-gray-950 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <span>
+                    {mode === 'signin' && 'Sign In'}
+                    {mode === 'signup' && 'Create Account'}
+                    {mode === 'forgot' && 'Send Reset Link'}
+                  </span>
+                  <ArrowRight size={15} />
+                </>
+              )}
+            </button>
+          </form>
+        )}
 
         {/* Switch Between Modes */}
-        <div className="mt-6 pt-4 border-t border-white/5 text-center text-xs text-gray-400">
-          {mode === 'signin' && (
-            <p>
-              Don't have an account?{' '}
-              <button
-                onClick={() => {
-                  setMode('signup');
-                  setErrorMsg(null);
-                }}
-                className="text-emerald-400 font-semibold hover:underline cursor-pointer"
-              >
-                Sign Up
-              </button>
-            </p>
-          )}
+        {mode !== 'supabase_settings' && mode !== 'google_prompt' && (
+          <div className="mt-5 pt-4 border-t border-white/5 text-center text-xs text-gray-400">
+            {mode === 'signin' && (
+              <p>
+                Don't have an account?{' '}
+                <button
+                  onClick={() => {
+                    setMode('signup');
+                    setErrorMsg(null);
+                  }}
+                  className="text-emerald-400 font-semibold hover:underline cursor-pointer"
+                >
+                  Sign Up
+                </button>
+              </p>
+            )}
 
-          {mode === 'signup' && (
-            <p>
-              Already have an account?{' '}
-              <button
-                onClick={() => {
-                  setMode('signin');
-                  setErrorMsg(null);
-                }}
-                className="text-emerald-400 font-semibold hover:underline cursor-pointer"
-              >
-                Sign In
-              </button>
-            </p>
-          )}
+            {mode === 'signup' && (
+              <p>
+                Already have an account?{' '}
+                <button
+                  onClick={() => {
+                    setMode('signin');
+                    setErrorMsg(null);
+                  }}
+                  className="text-emerald-400 font-semibold hover:underline cursor-pointer"
+                >
+                  Sign In
+                </button>
+              </p>
+            )}
 
-          {mode === 'forgot' && (
-            <p>
-              Remember your credentials?{' '}
-              <button
-                onClick={() => {
-                  setMode('signin');
-                  setErrorMsg(null);
-                }}
-                className="text-emerald-400 font-semibold hover:underline cursor-pointer"
-              >
-                Back to Sign In
-              </button>
-            </p>
-          )}
-        </div>
+            {mode === 'forgot' && (
+              <p>
+                Remember your credentials?{' '}
+                <button
+                  onClick={() => {
+                    setMode('signin');
+                    setErrorMsg(null);
+                  }}
+                  className="text-emerald-400 font-semibold hover:underline cursor-pointer"
+                >
+                  Back to Sign In
+                </button>
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

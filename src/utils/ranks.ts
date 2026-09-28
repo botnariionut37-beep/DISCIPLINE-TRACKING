@@ -30,7 +30,7 @@ export const RANK_TIERS: RankDefinition[] = [
   {
     id: 'gold',
     index: 1,
-    name: 'gold',
+    name: 'Gold',
     tierCategory: 'Prestige',
     title: 'Steadfast Practitioner',
     quote: '1 week sustained above 80% discipline. Character is forged through continuous heat.',
@@ -47,7 +47,7 @@ export const RANK_TIERS: RankDefinition[] = [
   {
     id: 'platinum',
     index: 2,
-    name: 'platinum',
+    name: 'Platinum',
     tierCategory: 'Prestige',
     title: 'Unshakable Guardian',
     quote: '2 weeks above 80%. Impervious to distraction, smooth as polished metal.',
@@ -64,7 +64,7 @@ export const RANK_TIERS: RankDefinition[] = [
   {
     id: 'diamond',
     index: 3,
-    name: 'diamond',
+    name: 'Diamond',
     tierCategory: 'Prestige',
     title: 'Crystalline Mind',
     quote: '3 weeks above 80%. Under sustained pressure, carbon transforms into diamond.',
@@ -81,7 +81,7 @@ export const RANK_TIERS: RankDefinition[] = [
   {
     id: 'advanced_1',
     index: 4,
-    name: 'advanced 1',
+    name: 'Advanced 1',
     tierCategory: 'Advanced',
     title: 'Ascendant Vanguard I',
     quote: '4 weeks above 80%. Ordinary discipline left behind; calculated execution begins.',
@@ -98,7 +98,7 @@ export const RANK_TIERS: RankDefinition[] = [
   {
     id: 'advanced_2',
     index: 5,
-    name: 'advanced 2',
+    name: 'Advanced 2',
     tierCategory: 'Advanced',
     title: 'Ascendant Vanguard II',
     quote: '5 weeks above 80%. Consistency has transformed from conscious effort into identity.',
@@ -115,7 +115,7 @@ export const RANK_TIERS: RankDefinition[] = [
   {
     id: 'advanced_3',
     index: 6,
-    name: 'advanced 3',
+    name: 'Advanced 3',
     tierCategory: 'Advanced',
     title: 'Ascendant Vanguard III',
     quote: '6 weeks above 80%. Standing resolute at the threshold of the Elite echelon.',
@@ -338,6 +338,12 @@ export function calculateRankProgress(
   const currentRank = RANK_TIERS[rankIndex];
   const nextRank = rankIndex + 1 < RANK_TIERS.length ? RANK_TIERS[rankIndex + 1] : null;
 
+  // ELITE MAX Stars: when someone reaches ELITE MAX, they add stars for every 80% week
+  const isEliteMax = currentRank.id === 'elite_max';
+  const eliteMaxStars = isEliteMax
+    ? Math.max(0, netQualifyingWeeks - 11)
+    : 0;
+
   return {
     currentRank,
     nextRank,
@@ -352,6 +358,7 @@ export function calculateRankProgress(
     totalChecks,
     qualifyingWeeks: qualifyingWeeksList,
     downgradedWeeks: downgradedWeeksList,
-    perfectWeeks
+    perfectWeeks,
+    eliteMaxStars
   };
 }

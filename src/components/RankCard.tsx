@@ -12,9 +12,10 @@ interface RankCardProps {
   rankProgress: UserRankProgress;
   onOpenLadder: () => void;
   onAddQualifyingWeek?: (amount?: number) => void;
+  isAdmin?: boolean;
 }
 
-export default function RankCard({ rankProgress, onOpenLadder, onAddQualifyingWeek }: RankCardProps) {
+export default function RankCard({ rankProgress, onOpenLadder, onAddQualifyingWeek, isAdmin = false }: RankCardProps) {
   const { 
     currentRank, 
     nextRank, 
@@ -25,7 +26,8 @@ export default function RankCard({ rankProgress, onOpenLadder, onAddQualifyingWe
     currentWeekQualifies, 
     isCurrentWeekAtRisk,
     currentWeekStatus,
-    totalChecks 
+    totalChecks,
+    eliteMaxStars 
   } = rankProgress;
   
   const isMaxTier = currentRank.id === 'elite_max';
@@ -73,7 +75,7 @@ export default function RankCard({ rankProgress, onOpenLadder, onAddQualifyingWe
 
         {/* Current Rank Showcase (Begins at Bronze) */}
         <div className="flex items-start gap-4 mb-4">
-          <RankBadge rank={currentRank} size="lg" showLabel={false} animated />
+          <RankBadge rank={currentRank} size="lg" showLabel={false} stars={eliteMaxStars} animated />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-2xl font-sans font-bold tracking-tight text-white">
@@ -82,6 +84,12 @@ export default function RankCard({ rankProgress, onOpenLadder, onAddQualifyingWe
               <span className={`text-[10px] font-mono font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border ${currentRank.badgeStyle}`}>
                 Tier {currentRank.index + 1}/12
               </span>
+              {eliteMaxStars > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 text-[11px] font-mono font-bold shadow-xs">
+                  <span>⭐</span>
+                  <span>{eliteMaxStars} {eliteMaxStars === 1 ? 'Star' : 'Stars'}</span>
+                </span>
+              )}
             </div>
             <p className="text-xs font-sans text-gray-400 mt-0.5">
               {currentRank.title}
@@ -154,7 +162,7 @@ export default function RankCard({ rankProgress, onOpenLadder, onAddQualifyingWe
               </span>
             ) : (
               <span className="text-emerald-400 font-semibold flex items-center gap-0.5">
-                <Sparkles size={10} /> ELITE MAX (APEX)
+                <Sparkles size={10} /> ELITE MAX (APEX) {eliteMaxStars > 0 && `(⭐ x${eliteMaxStars})`}
               </span>
             )}
           </div>
@@ -174,25 +182,27 @@ export default function RankCard({ rankProgress, onOpenLadder, onAddQualifyingWe
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
-          {onAddQualifyingWeek && (
-            <>
+          {/* Net score adjustment buttons: ONLY available for administrator accounts */}
+          {isAdmin && onAddQualifyingWeek && (
+            <div className="flex items-center gap-1 p-0.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+              <span className="text-[9px] font-mono text-amber-400 px-1 font-bold">Admin:</span>
               <button
                 onClick={() => onAddQualifyingWeek(1)}
-                className="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-[10px] font-mono transition-all cursor-pointer flex items-center gap-1"
-                title="Simulate +1 qualifying week (>=80%)"
+                className="px-2 py-1 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[10px] font-mono transition-all cursor-pointer flex items-center gap-1"
+                title="Admin: Add +1 net score"
               >
                 <Plus size={10} />
-                <span>+1 (80%+)</span>
+                <span>+1</span>
               </button>
 
               <button
                 onClick={() => onAddQualifyingWeek(-1)}
-                className="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-[10px] font-mono transition-all cursor-pointer flex items-center gap-1"
-                title="Simulate -1 downgraded week (<50%)"
+                className="px-2 py-1 rounded-md bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-[10px] font-mono transition-all cursor-pointer flex items-center gap-1"
+                title="Admin: Subtract -1 net score"
               >
-                <span>-1 (&lt;50%)</span>
+                <span>-1</span>
               </button>
-            </>
+            </div>
           )}
 
           <button

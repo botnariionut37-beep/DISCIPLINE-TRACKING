@@ -13,6 +13,7 @@ interface RankBadgeProps {
   showLabel?: boolean;
   showSubtitle?: boolean;
   animated?: boolean;
+  stars?: number;
   onClick?: () => void;
   className?: string;
 }
@@ -23,6 +24,7 @@ export default function RankBadge({
   showLabel = true,
   showSubtitle = false,
   animated = false,
+  stars = 0,
   onClick,
   className = ''
 }: RankBadgeProps) {
@@ -131,13 +133,19 @@ export default function RankBadge({
       {/* Label and Subtitle */}
       {showLabel && (
         <div className="flex flex-col">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className={`font-sans font-bold tracking-wide ${rank.textColor} ${config.text}`}>
               {rank.name}
             </span>
             {isEliteMax && (
               <span className="px-1.5 py-0.2 text-[9px] font-mono font-black uppercase tracking-widest bg-emerald-400 text-black rounded-sm shadow-xs">
                 APEX
+              </span>
+            )}
+            {stars > 0 && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 text-[10px] font-mono font-bold shadow-xs">
+                <span>⭐</span>
+                {stars > 1 && <span>x{stars}</span>}
               </span>
             )}
           </div>

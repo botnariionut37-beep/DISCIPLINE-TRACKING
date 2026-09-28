@@ -28,6 +28,7 @@ interface RankLadderModalProps {
   onAddQualifyingWeek: (amount?: number) => void;
   onResetRankOverrides: () => void;
   currentOverrideRankId?: RankId | null;
+  isAdmin?: boolean;
 }
 
 export default function RankLadderModal({
@@ -37,11 +38,12 @@ export default function RankLadderModal({
   onSelectRankOverride,
   onAddQualifyingWeek,
   onResetRankOverrides,
-  currentOverrideRankId
+  currentOverrideRankId,
+  isAdmin = false
 }: RankLadderModalProps) {
   if (!isOpen) return null;
 
-  const { currentRank, qualifyingWeeksCount, currentWeekRate, currentWeekQualifies } = rankProgress;
+  const { currentRank, qualifyingWeeksCount, currentWeekRate, currentWeekQualifies, eliteMaxStars } = rankProgress;
 
   return (
     <AnimatePresence>
@@ -112,42 +114,45 @@ export default function RankLadderModal({
               </span>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-gray-500 text-[10px] font-mono uppercase tracking-wider">Test Weekly Score:</span>
-              <button
-                onClick={() => onAddQualifyingWeek(1)}
-                className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-[11px] font-mono transition-colors cursor-pointer flex items-center gap-1"
-                title="Simulate completing another week with >= 80% discipline (+1 score)"
-              >
-                <Plus size={11} /> +1 Week (80%+)
-              </button>
-
-              <button
-                onClick={() => onAddQualifyingWeek(-1)}
-                className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-[11px] font-mono transition-colors cursor-pointer flex items-center gap-1"
-                title="Simulate week with < 50% discipline (-1 downgrade)"
-              >
-                <Minus size={11} /> -1 Week (&lt;50%)
-              </button>
-
-              <button
-                onClick={() => onSelectRankOverride('elite_max')}
-                className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[11px] font-mono transition-colors cursor-pointer flex items-center gap-1"
-                title="Preview ELITE MAX tier directly"
-              >
-                <Sparkles size={11} /> ELITE MAX
-              </button>
-
-              {(currentOverrideRankId || qualifyingWeeksCount > 0) && (
+            {/* Admin-only testing toolbar */}
+            {isAdmin && (
+              <div className="flex items-center gap-2 flex-wrap p-1 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                <span className="text-amber-400 text-[10px] font-mono uppercase tracking-wider font-bold px-1">Admin Tools:</span>
                 <button
-                  onClick={onResetRankOverrides}
-                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-rose-500/10 text-gray-400 hover:text-rose-400 border border-white/10 text-[11px] font-mono transition-colors cursor-pointer flex items-center gap-1"
-                  title="Reset back to purely calculated weeks from your check log"
+                  onClick={() => onAddQualifyingWeek(1)}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-[11px] font-mono transition-colors cursor-pointer flex items-center gap-1"
+                  title="Admin: Simulate completing another week with >= 80% discipline (+1 score)"
                 >
-                  <RotateCcw size={11} /> Reset
+                  <Plus size={11} /> +1 Week (80%+)
                 </button>
-              )}
-            </div>
+
+                <button
+                  onClick={() => onAddQualifyingWeek(-1)}
+                  className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-[11px] font-mono transition-colors cursor-pointer flex items-center gap-1"
+                  title="Admin: Simulate week with < 50% discipline (-1 downgrade)"
+                >
+                  <Minus size={11} /> -1 Week (&lt;50%)
+                </button>
+
+                <button
+                  onClick={() => onSelectRankOverride('elite_max')}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[11px] font-mono transition-colors cursor-pointer flex items-center gap-1"
+                  title="Admin: Preview ELITE MAX tier directly"
+                >
+                  <Sparkles size={11} /> ELITE MAX
+                </button>
+
+                {(currentOverrideRankId || qualifyingWeeksCount > 0) && (
+                  <button
+                    onClick={onResetRankOverrides}
+                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-rose-500/10 text-gray-400 hover:text-rose-400 border border-white/10 text-[11px] font-mono transition-colors cursor-pointer flex items-center gap-1"
+                    title="Admin: Reset overrides"
+                  >
+                    <RotateCcw size={11} /> Reset
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 12 Ranks List */}
@@ -227,19 +232,31 @@ export default function RankLadderModal({
                         </p>
                       </div>
 
-                      {/* Select / Test Rank Button */}
-                      <button
-                        onClick={() => onSelectRankOverride(tier.id)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-sans font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-                          isCurrent
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : 'bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10'
-                        }`}
-                        title={`Select or test ${tier.name}`}
-                      >
-                        <span>{isCurrent ? 'Current' : 'Select / Test'}</span>
-                        <ChevronRight size={13} />
-                      </button>
+                      {/* Select / Test Rank Button (Admin only) or Status Pill */}
+                      {isAdmin ? (
+                        <button
+                          onClick={() => onSelectRankOverride(tier.id)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-sans font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                            isCurrent
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10'
+                          }`}
+                          title={`Select or test ${tier.name}`}
+                        >
+                          <span>{isCurrent ? 'Current' : 'Select / Test'}</span>
+                          <ChevronRight size={13} />
+                        </button>
+                      ) : (
+                        <span className={`px-2.5 py-1 rounded-xl text-xs font-sans font-medium ${
+                          isCurrent 
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold' 
+                            : isUnlocked 
+                            ? 'text-gray-400' 
+                            : 'text-gray-600'
+                        }`}>
+                          {isCurrent ? 'Active' : isUnlocked ? 'Achieved' : 'Locked'}
+                        </span>
+                      )}
                     </div>
                   </div>
 
