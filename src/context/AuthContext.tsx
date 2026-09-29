@@ -21,24 +21,15 @@ import {
   isSupabaseConfigured,
   saveSupabaseConfig,
   clearSupabaseConfig,
-  getStoredSupabaseConfig,
-  GoogleCachedAccount,
-  getCachedGoogleAccounts
+  getStoredSupabaseConfig
 } from '../services/supabase';
-import { 
-  signInWithFirebaseGoogle, 
-  signOutFirebase, 
-  auth as firebaseAuth, 
-  mapFirebaseUserToAppUser 
-} from '../services/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
 import { isAdminEmail } from '../utils/admin';
 
 interface AuthContextType {
   user: AppAuthUser | null;
   loading: boolean;
   isAdmin: boolean;
-  signInWithGoogle: (fallbackEmail?: string, fallbackName?: string, password?: string) => Promise<AppAuthUser>;
+  signInWithGoogle: (fallbackEmail?: string, fallbackName?: string) => Promise<AppAuthUser>;
   signInWithEmail: (emailOrUsername: string, pass: string) => Promise<AppAuthUser>;
   signUpWithEmail: (email: string, pass: string, displayName?: string, username?: string) => Promise<SignUpResult>;
   verifyEmail: (tokenOrEmail: string) => Promise<AppAuthUser>;
@@ -50,8 +41,6 @@ interface AuthContextType {
   saveSupabaseConfig: (url: string, anonKey: string) => void;
   clearSupabaseConfig: () => void;
   storedSupabaseConfig: { url: string; anonKey: string };
-  cachedGoogleAccounts: GoogleCachedAccount[];
-  refreshGoogleAccounts: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -133,45 +122,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authListener = data.subscription;
     }
 
-    // Also listen to Firebase Auth changes
-    const fbUnsubscribe = onAuthStateChanged(firebaseAuth, (fbUser) => {
-      if (fbUser && mounted) {
-        const appUser = mapFirebaseUserToAppUser(fbUser);
-        setUser(appUser);
-        setActiveUniversalSession(appUser);
-      }
-    });
-
     return () => {
       mounted = false;
       if (authListener) authListener.unsubscribe();
-      fbUnsubscribe();
     };
   }, []);
 
-  const [cachedGoogleAccounts, setCachedGoogleAccounts] = useState<GoogleCachedAccount[]>(getCachedGoogleAccounts());
-
-  const refreshGoogleAccounts = () => {
-    setCachedGoogleAccounts(getCachedGoogleAccounts());
-  };
-
-  const signInWithGoogle = async (fallbackEmail?: string, fallbackName?: string, password?: string): Promise<AppAuthUser> => {
-    // If explicit email credentials were provided via fallback form
-    if (fallbackEmail && fallbackEmail.trim()) {
-      const loggedUser = await appSignInWithGoogle(fallbackEmail, fallbackName, password);
-      if (loggedUser) {
-        setUser(loggedUser);
-        refreshGoogleAccounts();
-      }
-      return loggedUser;
-    }
-
-    // Default: Trigger real Firebase Google OAuth popup which directs to accounts.google.com
-    const loggedUser = await signInWithFirebaseGoogle();
-    if (loggedUser) {
-      setUser(loggedUser);
-      refreshGoogleAccounts();
-    }
+  const signInWithGoogle = async (fallbackEmail?: string, fallbackName?: string): Promise<AppAuthUser> => {
+    const loggedUser = await appSignInWithGoogle(fallbackEmail, fallbackName);
+    if (loggedUser) setUser(loggedUser);
     return loggedUser;
   };
 
@@ -228,7 +187,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async (): Promise<void> => {
     await appSignOut();
-    await signOutFirebase();
     setUser(null);
   };
 
@@ -261,9 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isSupabaseConfigured: isConfigured,
         saveSupabaseConfig: handleSaveSupabaseConfig,
         clearSupabaseConfig: handleClearSupabaseConfig,
-        storedSupabaseConfig: getStoredSupabaseConfig(),
-        cachedGoogleAccounts,
-        refreshGoogleAccounts
+        storedSupabaseConfig: getStoredSupabaseConfig()
       }}
     >
       {children}

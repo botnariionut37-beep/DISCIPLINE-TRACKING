@@ -437,135 +437,49 @@ export async function appSignIn(params: {
   return authUser;
 }
 
-export interface GoogleCachedAccount {
-  email: string;
-  name: string;
-  avatar?: string;
-  lastUsed: string;
-}
-
-const GOOGLE_ACCOUNTS_CACHE_KEY = 'discipline_google_accounts_cache';
-
-export function getCachedGoogleAccounts(): GoogleCachedAccount[] {
-  try {
-    const raw = localStorage.getItem(GOOGLE_ACCOUNTS_CACHE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch (e) {
-    // fallback
-  }
-
-  // Default accounts inspired by user profile
-  return [
-    {
-      email: 'botnariionut37@gmail.com',
-      name: 'Ion Botnari',
-      avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ionut37',
-      lastUsed: new Date().toISOString()
-    },
-    {
-      email: 'ibotnari589@gmail.com',
-      name: 'Ion Botnari',
-      avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ibotnari589',
-      lastUsed: new Date(Date.now() - 3600000).toISOString()
-    },
-    {
-      email: 'ionel.academy@gmail.com',
-      name: 'Botnari Ion',
-      avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=botnariion',
-      lastUsed: new Date(Date.now() - 86400000).toISOString()
-    }
-  ];
-}
-
-export function cacheGoogleAccount(account: GoogleCachedAccount) {
-  try {
-    const current = getCachedGoogleAccounts();
-    const updated = [
-      account,
-      ...current.filter(a => a.email.toLowerCase() !== account.email.toLowerCase())
-    ].slice(0, 10);
-    localStorage.setItem(GOOGLE_ACCOUNTS_CACHE_KEY, JSON.stringify(updated));
-  } catch (e) {
-    console.warn('Failed to cache Google account:', e);
-  }
-}
-
 /**
  * Sign In with Google:
- * Supports email, required password (min 6 characters), and display name.
+ * Uses Supabase Google OAuth or seamless universal Google account sign-in
  */
-export async function appSignInWithGoogle(
-  fallbackEmail?: string, 
-  fallbackName?: string,
-  password?: string
-): Promise<AppAuthUser> {
-  // If fallback email was supplied from Google account selector / modal form
+export async function appSignInWithGoogle(fallbackEmail?: string, fallbackName?: string): Promise<AppAuthUser> {
+  // If fallback email was supplied from in-modal Google form
   if (fallbackEmail && fallbackEmail.trim()) {
     const emailClean = fallbackEmail.trim().toLowerCase();
-
-    // Enforce password requirements for Google/Gmail logins
-    if (password !== undefined) {
-      if (!password || password.length < 6) {
-        throw new Error('Google account password must be at least 6 characters.');
-      }
-    }
-
-    const accounts = getStoredAccounts();
-    const existing = accounts.find(a => a.email.toLowerCase() === emailClean);
-
-    // If an account exists and has a saved password, verify it
-    if (existing && existing.passwordHash && password) {
-      if (existing.passwordHash !== btoa(password)) {
-        throw new Error('Incorrect password for this Google account.');
-      }
-    } else if (password) {
-      // Create or update stored account with the password hash
-      const username = emailClean.split('@')[0];
-      const newAcc: StoredAccount = {
-        id: existing?.id || `g_${btoa(emailClean).replace(/=/g, '')}`,
-        email: emailClean,
-        username: existing?.username || username,
-        displayName: fallbackName?.trim() || existing?.displayName || (username.charAt(0).toUpperCase() + username.slice(1)),
-        passwordHash: btoa(password),
-        createdAt: existing?.createdAt || new Date().toISOString(),
-        emailVerified: true,
-        photoURL: existing?.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`
-      };
-      saveAccount(newAcc);
-    }
-
     const username = emailClean.split('@')[0];
-    const resolvedName = fallbackName?.trim() || existing?.displayName || (username.charAt(0).toUpperCase() + username.slice(1));
-    const resolvedPhoto = existing?.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`;
-
     const authUser: AppAuthUser = {
-      uid: existing?.id || `g_${btoa(emailClean).replace(/=/g, '')}`,
+      uid: `g_${btoa(emailClean).replace(/=/g, '')}`,
       email: emailClean,
-      displayName: resolvedName,
+      displayName: fallbackName?.trim() || username.charAt(0).toUpperCase() + username.slice(1),
       username,
-      photoURL: resolvedPhoto,
+      photoURL: `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`,
       isAdmin: isAdminEmail(emailClean),
       provider: 'google',
       metadata: {
-        creationTime: existing?.createdAt || new Date().toISOString()
+        creationTime: new Date().toISOString()
       }
     };
-
-    cacheGoogleAccount({
-      email: emailClean,
-      name: resolvedName,
-      avatar: resolvedPhoto,
-      lastUsed: new Date().toISOString()
-    });
-
     setActiveUniversalSession(authUser);
     return authUser;
   }
 
-  // Trigger Google prompt mode for account selection
+  // 1. Try Supabase Google OAuth if configured
+  const sb = getSupabase();
+  if (sb) {
+    try {
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) throw error;
+      return null as any;
+    } catch (sbError: any) {
+      console.warn('[Supabase OAuth] OAuth error:', sbError.message);
+    }
+  }
+
+  // 2. Signal to modal that custom domain requires direct Google email entry
   const domainError = new Error('DOMAIN_FALLBACK_REQUIRED');
   (domainError as any).code = 'DOMAIN_FALLBACK_REQUIRED';
   throw domainError;
