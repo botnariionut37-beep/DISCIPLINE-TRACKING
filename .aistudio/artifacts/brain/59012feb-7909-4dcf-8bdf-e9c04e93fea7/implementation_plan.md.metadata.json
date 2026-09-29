@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to require password creation with email verification links, restrict the 'Wipe Week' button to admin users only, and add All-Time (ranked by Rank Tier) vs Weekly (ranked by Discipline Rate) leaderboard tab toggle.",
-  "updatedAt":  "2026-09-28T13:04:02.587413783Z",
-  "requestFeedback":  true,
-  "userFacing":  true
+  "summary": "Plan to integrate official Firebase Google Authentication popup/redirect so clicking 'Continue with Google / Gmail' triggers genuine Google OAuth account selection (accounts.google.com), while retaining the password requirement fallback if needed.",
+  "updatedAt": "2026-09-29T19:16:17.885004510Z",
+  "requestFeedback": true,
+  "userFacing": true
 }

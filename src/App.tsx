@@ -795,16 +795,6 @@ export default function App() {
 
             {/* Quick Actions (Reset to current, Clear) */}
             <div className="flex items-center gap-2 flex-wrap">
-              <button
-                onClick={() => setIsPortabilityOpen(true)}
-                className="px-3.5 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/10 hover:border-emerald-500/20 text-xs font-sans font-medium transition-all cursor-pointer flex items-center gap-1.5"
-                title="Download report or backup trackings and categories"
-                id="portability-hub-btn"
-              >
-                <Download size={13} />
-                <span>Download / Backup</span>
-              </button>
-
               {/* User Authentication & Cloud Sync Menu */}
               <UserMenu 
                 onOpenAuthModal={() => setIsAuthModalOpen(true)}

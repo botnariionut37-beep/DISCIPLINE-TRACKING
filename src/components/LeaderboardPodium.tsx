@@ -7,12 +7,14 @@ interface LeaderboardPodiumProps {
   entries: LeaderboardEntry[];
   currentUserId?: string | null;
   onSelectWarrior: (warrior: LeaderboardEntry) => void;
+  mode?: 'all-time' | 'weekly';
 }
 
 export const LeaderboardPodium: React.FC<LeaderboardPodiumProps> = ({
   entries,
   currentUserId,
   onSelectWarrior,
+  mode = 'all-time',
 }) => {
   if (entries.length === 0) return null;
 
@@ -42,7 +44,7 @@ export const LeaderboardPodium: React.FC<LeaderboardPodiumProps> = ({
         badgeBg: 'bg-amber-400 text-black',
         icon: <Crown className="w-5 h-5 text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" />,
         shadow: 'shadow-[0_0_30px_rgba(245,158,11,0.2)]',
-        label: '1st Champion',
+        label: mode === 'weekly' ? '1st Weekly Leader' : '1st Champion',
         scale: 'scale-105 z-10',
       },
       2: {
@@ -140,17 +142,21 @@ export const LeaderboardPodium: React.FC<LeaderboardPodiumProps> = ({
           {/* Stats Bar */}
           <div className="w-full pt-3 border-t border-white/5 flex items-center justify-between text-xs text-slate-300">
             <div className="text-left">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider">Discipline</div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider">
+                {mode === 'weekly' ? 'Weekly Rate' : 'Discipline'}
+              </div>
               <div className="font-black text-emerald-400 flex items-center gap-1 text-sm">
                 <Flame className="w-3.5 h-3.5" />
                 {entry.disciplineScore}%
               </div>
             </div>
             <div className="text-right">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider">Qualifying</div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider">
+                {mode === 'weekly' ? 'Checks' : 'Qualifying'}
+              </div>
               <div className="font-bold text-white flex items-center justify-end gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
-                {entry.qualifyingWeeks} wks
+                {mode === 'weekly' ? `${entry.weeklyCompletedChecks}/${entry.weeklyTargetChecks}` : `${entry.qualifyingWeeks} wks`}
               </div>
             </div>
           </div>
@@ -165,10 +171,12 @@ export const LeaderboardPodium: React.FC<LeaderboardPodiumProps> = ({
         <div>
           <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-amber-400" />
-            Champions of the Arena
+            {mode === 'weekly' ? 'Weekly Discipline Champions' : 'All-Time Champions of the Arena'}
           </h3>
           <p className="text-xs text-slate-400">
-            Top ranked warriors leading by discipline tier and weekly execution
+            {mode === 'weekly' 
+              ? 'Ranked strictly by active week completion rate percentage'
+              : 'Ranked by lifetime warrior Rank Tier, Qualifying Weeks, and consistency'}
           </p>
         </div>
       </div>

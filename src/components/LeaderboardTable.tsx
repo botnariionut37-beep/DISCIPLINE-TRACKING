@@ -33,11 +33,45 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
   onOpenAuth,
   settings,
 }) => {
+  const [boardMode, setBoardMode] = useState<'all-time' | 'weekly'>('all-time');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTier, setFilterTier] = useState<'all' | 'elite' | 'prestige' | 'mine'>('all');
 
+  // Dual Sorting: All-Time sorts by Rank tier first; Weekly sorts by discipline rate % first
+  const sortedByModeEntries = useMemo(() => {
+    return [...entries].sort((a, b) => {
+      if (boardMode === 'all-time') {
+        // 1. Rank Tier index (Elite Max > Elite 4 > ... > Bronz)
+        if (b.rankIndex !== a.rankIndex) {
+          return b.rankIndex - a.rankIndex;
+        }
+        // 2. Qualifying Weeks (seniority / consistency)
+        if (b.qualifyingWeeks !== a.qualifyingWeeks) {
+          return b.qualifyingWeeks - a.qualifyingWeeks;
+        }
+        // 3. Discipline Score
+        if (b.disciplineScore !== a.disciplineScore) {
+          return b.disciplineScore - a.disciplineScore;
+        }
+        return b.weeklyCompletedChecks - a.weeklyCompletedChecks;
+      } else {
+        // Weekly Mode:
+        // 1. Discipline Rate % (100% > 98% > ...)
+        if (b.disciplineScore !== a.disciplineScore) {
+          return b.disciplineScore - a.disciplineScore;
+        }
+        // 2. Weekly completed checks count
+        if (b.weeklyCompletedChecks !== a.weeklyCompletedChecks) {
+          return b.weeklyCompletedChecks - a.weeklyCompletedChecks;
+        }
+        // 3. Rank Tier index
+        return b.rankIndex - a.rankIndex;
+      }
+    });
+  }, [entries, boardMode]);
+
   const filteredEntries = useMemo(() => {
-    return entries.filter((entry) => {
+    return sortedByModeEntries.filter((entry) => {
       // Search
       const name = (entry.customAlias || entry.displayName).toLowerCase();
       const rank = entry.rankName.toLowerCase();
@@ -57,22 +91,22 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
       }
       return true;
     });
-  }, [entries, searchQuery, filterTier, currentUserId]);
+  }, [sortedByModeEntries, searchQuery, filterTier, currentUserId]);
 
   const currentUserIndex = useMemo(() => {
     if (!currentUserId) return -1;
-    return entries.findIndex(e => e.userId === currentUserId);
-  }, [entries, currentUserId]);
+    return sortedByModeEntries.findIndex(e => e.userId === currentUserId);
+  }, [sortedByModeEntries, currentUserId]);
 
-  const currentUserEntry = currentUserIndex >= 0 ? entries[currentUserIndex] : null;
+  const currentUserEntry = currentUserIndex >= 0 ? sortedByModeEntries[currentUserIndex] : null;
 
   return (
     <div className="w-full space-y-6">
       
       {/* Top Banner / Hero Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-[#121622] via-[#0E1118] to-[#121622] border border-white/10 shadow-xl">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-[#121622] via-[#0E1118] to-[#121622] border border-white/10 shadow-xl">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30">
               <Trophy className="w-4 h-4" />
             </span>
@@ -85,16 +119,44 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
             </h2>
           </div>
           <p className="text-xs text-slate-400">
-            Real registered warriors ranked by Discipline Rank Tier, Qualifying Weeks, and Weekly Execution.
+            {boardMode === 'all-time'
+              ? 'All-Time board: Warriors are ranked primarily by their warrior Rank Tier and Qualifying Weeks.'
+              : 'Weekly board: Warriors are ranked strictly by current active week Discipline Completion Rate %.'}
           </p>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-2.5">
+        {/* Board Switcher & Actions */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* All-Time vs Weekly Mode Switcher */}
+          <div className="flex items-center p-1 rounded-xl bg-black/60 border border-white/10 shadow-inner">
+            <button
+              onClick={() => setBoardMode('all-time')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                boardMode === 'all-time'
+                  ? 'bg-amber-500 text-gray-950 font-bold shadow-md shadow-amber-500/20'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Trophy size={13} />
+              <span>All-Time (By Rank)</span>
+            </button>
+            <button
+              onClick={() => setBoardMode('weekly')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                boardMode === 'weekly'
+                  ? 'bg-emerald-500 text-gray-950 font-bold shadow-md shadow-emerald-500/20'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Flame size={13} />
+              <span>Weekly (By Rate %)</span>
+            </button>
+          </div>
+
           {!currentUserId && onOpenAuth && (
             <button
               onClick={onOpenAuth}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-xs font-bold text-white shadow-lg shadow-indigo-500/20 transition-all transform hover:-translate-y-0.5"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-xs font-bold text-white shadow-lg shadow-indigo-500/20 transition-all transform hover:-translate-y-0.5 cursor-pointer"
             >
               <User className="w-3.5 h-3.5" />
               <span>Sign In to Rank</span>
@@ -103,7 +165,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
 
           <button
             onClick={onOpenSettings}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-200 transition-colors shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-200 transition-colors shadow-sm cursor-pointer"
           >
             <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
             <span>Alias & Privacy</span>
@@ -132,7 +194,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                   {currentUserEntry.customAlias || currentUserEntry.displayName}
                 </span>
                 <span className="text-[10px] uppercase font-black px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
-                  Your Standing
+                  Your Standing ({boardMode === 'all-time' ? 'All-Time' : 'Weekly'})
                 </span>
               </div>
               <div className="text-xs text-slate-400 flex items-center gap-3 mt-0.5">
@@ -153,11 +215,12 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
       )}
 
       {/* Top 3 Champions Podium (if we have entries) */}
-      {entries.length > 0 ? (
+      {sortedByModeEntries.length > 0 ? (
         <LeaderboardPodium
-          entries={entries.slice(0, 3)}
+          entries={sortedByModeEntries.slice(0, 3)}
           currentUserId={currentUserId}
           onSelectWarrior={onSelectWarrior}
+          mode={boardMode}
         />
       ) : (
         <div className="p-8 sm:p-10 rounded-2xl bg-gradient-to-b from-[#131722] to-[#0A0C10] border border-white/10 text-center space-y-4 shadow-xl">
@@ -272,10 +335,14 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-white/10 bg-white/[0.02] text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                <th className="py-3 px-4 w-16 text-center">Rank</th>
+                <th className="py-3 px-4 w-16 text-center">Place</th>
                 <th className="py-3 px-4">Warrior</th>
-                <th className="py-3 px-4">Discipline Tier</th>
-                <th className="py-3 px-4">This Week</th>
+                <th className={`py-3 px-4 ${boardMode === 'all-time' ? 'text-amber-400 bg-amber-500/10 rounded-t-lg' : ''}`}>
+                  Discipline Tier {boardMode === 'all-time' && '(Primary)'}
+                </th>
+                <th className={`py-3 px-4 ${boardMode === 'weekly' ? 'text-emerald-400 bg-emerald-500/10 rounded-t-lg' : ''}`}>
+                  Weekly Rate {boardMode === 'weekly' && '(Primary)'}
+                </th>
                 <th className="py-3 px-4 text-center">Qualifying Wks</th>
                 <th className="py-3 px-4">Top Focus Habits</th>
                 <th className="py-3 px-4 text-right">Inspect</th>
@@ -285,7 +352,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
               {filteredEntries.map((warrior, idx) => {
                 const rankMeta = RANK_TIERS.find(r => r.index === warrior.rankIndex) || RANK_TIERS[0];
                 const isMe = warrior.userId === currentUserId;
-                const absolutePosition = entries.findIndex(e => e.userId === warrior.userId) + 1;
+                const absolutePosition = sortedByModeEntries.findIndex(e => e.userId === warrior.userId) + 1;
 
                 return (
                   <tr 
