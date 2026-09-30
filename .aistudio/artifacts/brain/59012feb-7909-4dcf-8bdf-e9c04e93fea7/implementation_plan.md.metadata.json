@@ -1,6 +1,6 @@
 {
-  "summary": "Plan to provide a Google/Gmail account selector interface matching the screenshot (with preset/saved accounts, account switcher, and password requirements for Google accounts) and enforce password requirements for Google/Gmail logins.",
-  "updatedAt": "2026-09-29T19:10:13.312533273Z",
+  "summary": "Plan to integrate official Firebase Google Authentication popup/redirect so clicking 'Continue with Google / Gmail' triggers genuine Google OAuth account selection (accounts.google.com), while retaining the password requirement fallback if needed.",
+  "updatedAt": "2026-09-29T19:16:17.885004510Z",
   "requestFeedback": true,
   "userFacing": true
 }

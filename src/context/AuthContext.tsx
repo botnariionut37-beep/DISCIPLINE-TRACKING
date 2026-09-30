@@ -14,6 +14,8 @@ import {
   appSignInWithGoogle, 
   appSignOut, 
   appSendPasswordReset,
+  appResetPassword,
+  PasswordResetResult,
   appUpdateUserProfile,
   appVerifyEmail,
   appResendVerification,
@@ -34,7 +36,8 @@ interface AuthContextType {
   signUpWithEmail: (email: string, pass: string, displayName?: string, username?: string) => Promise<SignUpResult>;
   verifyEmail: (tokenOrEmail: string) => Promise<AppAuthUser>;
   resendVerification: (email: string) => Promise<string>;
-  sendPasswordReset: (email: string) => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<PasswordResetResult>;
+  resetPassword: (email: string, newPass: string, token?: string) => Promise<AppAuthUser>;
   updateUserProfile: (updates: { displayName?: string; photoURL?: string }) => Promise<AppAuthUser | null>;
   signOut: () => Promise<void>;
   isSupabaseConfigured: boolean;
@@ -173,8 +176,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return await appResendVerification(email);
   };
 
-  const sendPasswordReset = async (email: string): Promise<void> => {
-    await appSendPasswordReset(email);
+  const sendPasswordReset = async (email: string): Promise<PasswordResetResult> => {
+    return await appSendPasswordReset(email);
+  };
+
+  const resetPassword = async (email: string, newPass: string, token?: string): Promise<AppAuthUser> => {
+    const updatedUser = await appResetPassword({ email, newPassword: newPass, token });
+    setUser(updatedUser);
+    return updatedUser;
   };
 
   const updateUserProfile = async (updates: { displayName?: string; photoURL?: string }): Promise<AppAuthUser | null> => {
@@ -214,6 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         verifyEmail,
         resendVerification,
         sendPasswordReset,
+        resetPassword,
         updateUserProfile,
         signOut,
         isSupabaseConfigured: isConfigured,

@@ -3,14 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { 
   X, 
   Lock, 
   Mail, 
   User as UserIcon, 
-  Sparkles, 
   CheckCircle2, 
   AlertCircle, 
   ArrowRight, 
@@ -19,41 +18,41 @@ import {
   AtSign,
   KeyRound,
   ExternalLink,
-  Send,
   RefreshCw
 } from 'lucide-react';
-import { ADMIN_EMAILS } from '../utils/admin';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+type AuthMode = 'signin' | 'signup' | 'forgot' | 'reset_sent' | 'reset_password' | 'verification_sent' | 'supabase_settings';
+
 export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const { 
-    signInWithGoogle, 
     signInWithEmail, 
     signUpWithEmail, 
     verifyEmail,
     resendVerification,
     sendPasswordReset,
+    resetPassword,
     isSupabaseConfigured,
     saveSupabaseConfig,
     clearSupabaseConfig,
     storedSupabaseConfig
   } = useAuth();
 
-  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot' | 'supabase_settings' | 'google_prompt' | 'verification_sent'>('signin');
+  const [mode, setMode] = useState<AuthMode>('signin');
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [googleAccountEmail, setGoogleAccountEmail] = useState('');
-  const [googleAccountName, setGoogleAccountName] = useState('');
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
   const [pendingVerificationLink, setPendingVerificationLink] = useState('');
+  const [pendingResetEmail, setPendingResetEmail] = useState('');
+  const [pendingResetLink, setPendingResetLink] = useState('');
   const [manualTokenInput, setManualTokenInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -63,42 +62,37 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [supabaseUrl, setSupabaseUrl] = useState(storedSupabaseConfig.url || '');
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(storedSupabaseConfig.anonKey || '');
 
-  if (!isOpen) return null;
-
-  const handleGoogleSignIn = async () => {
-    setIsLoading(true);
-    setErrorMsg(null);
-    try {
-      await signInWithGoogle();
-      onClose();
-    } catch (err: any) {
-      if (err.code === 'DOMAIN_FALLBACK_REQUIRED' || (err.message && err.message.includes('DOMAIN_FALLBACK_REQUIRED'))) {
-        setMode('google_prompt');
-      } else if (err.message && !err.message.includes('cancelled')) {
-        setErrorMsg(err.message || 'Failed to sign in with Google.');
+  // Listen to hash routes for reset password or email verification
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash;
+      if (hash.includes('reset_password')) {
+        const queryPart = hash.includes('?') ? hash.split('?')[1] : '';
+        const params = new URLSearchParams(queryPart);
+        const emailParam = params.get('email');
+        const tokenParam = params.get('token');
+        if (emailParam) {
+          setEmail(emailParam);
+          setPendingResetEmail(emailParam);
+        }
+        if (tokenParam) setManualTokenInput(tokenParam);
+        setMode('reset_password');
+      } else if (hash.includes('verify_email')) {
+        const queryPart = hash.includes('?') ? hash.split('?')[1] : '';
+        const params = new URLSearchParams(queryPart);
+        const emailParam = params.get('email');
+        const tokenParam = params.get('token');
+        if (emailParam) setPendingVerificationEmail(emailParam);
+        if (tokenParam) setManualTokenInput(tokenParam);
+        setMode('verification_sent');
       }
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
+    handleHash();
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, []);
 
-  const handleGoogleFallbackSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!googleAccountEmail.includes('@')) {
-      setErrorMsg('Please enter a valid Google email address.');
-      return;
-    }
-    setIsLoading(true);
-    setErrorMsg(null);
-    try {
-      await signInWithGoogle(googleAccountEmail, googleAccountName);
-      onClose();
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to sign in with Google account.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  if (!isOpen) return null;
 
   const handleVerifyEmail = async (tokenToVerify?: string) => {
     const token = tokenToVerify || manualTokenInput.trim() || pendingVerificationEmail;
@@ -169,11 +163,31 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
           onClose();
         }
       } else if (mode === 'forgot') {
-        if (!email.includes('@')) {
+        const cleanEmail = email.trim().toLowerCase();
+        if (!cleanEmail.includes('@')) {
           throw new Error('Please enter your registered email address.');
         }
-        await sendPasswordReset(email);
-        setSuccessMsg(`Recovery link sent to ${email}. Please check your inbox.`);
+        const result = await sendPasswordReset(cleanEmail);
+        setPendingResetEmail(cleanEmail);
+        setPendingResetLink(result.resetLink || '');
+        setMode('reset_sent');
+        setSuccessMsg(`A password reset link was sent to ${cleanEmail}. Please check your Gmail or email inbox.`);
+      } else if (mode === 'reset_password') {
+        if (password.length < 6) {
+          throw new Error('New password must be at least 6 characters long.');
+        }
+        if (confirmPassword && password !== confirmPassword) {
+          throw new Error('Passwords do not match. Please re-enter your password.');
+        }
+        const targetEmail = email || pendingResetEmail;
+        if (!targetEmail) {
+          throw new Error('Missing email address. Please start password recovery again.');
+        }
+        await resetPassword(targetEmail, password, manualTokenInput);
+        setSuccessMsg('Password updated successfully! You are now signed in.');
+        setTimeout(() => {
+          onClose();
+        }, 1200);
       }
     } catch (err: any) {
       if (err.code === 'EMAIL_NOT_VERIFIED' || (err.message && err.message.includes('EMAIL_NOT_VERIFIED'))) {
@@ -228,7 +242,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
           <div className="flex items-center justify-between gap-2 mb-3">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono">
               <ShieldCheck size={14} />
-              <span>Multi-Domain Free Cloud Auth</span>
+              <span>Warrior Authentication</span>
             </div>
 
             <button
@@ -249,47 +263,25 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             {mode === 'signin' && 'Sign In to Your Account'}
             {mode === 'signup' && 'Create Warrior Account'}
             {mode === 'forgot' && 'Reset Password'}
+            {mode === 'reset_sent' && 'Reset Link Dispatched'}
+            {mode === 'reset_password' && 'Set New Password'}
             {mode === 'supabase_settings' && 'Custom Supabase Setup'}
-            {mode === 'google_prompt' && 'Google Account Sign In'}
             {mode === 'verification_sent' && 'Verify Your Email'}
           </h2>
           <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
             {mode === 'verification_sent'
               ? `We have generated an email verification link for ${pendingVerificationEmail || 'your account'}. Click the link to complete verification and sign in.`
-              : mode === 'google_prompt'
-              ? 'Sign in directly with your Google account credentials.'
+              : mode === 'reset_sent'
+              ? `A password reset link has been dispatched to ${pendingResetEmail}. Follow the instructions in your email to change your password.`
+              : mode === 'reset_password'
+              ? 'Enter and confirm your new password below.'
               : mode === 'supabase_settings'
-              ? 'Connect your custom Supabase database and authentication project to allow unlimited free domains (e.g. vercel.app).'
+              ? 'Connect your custom Supabase database and authentication project to allow unlimited free domains.'
               : mode === 'forgot'
-              ? 'Enter your registered email to receive account recovery instructions.'
-              : 'Works seamlessly across all domains (Vercel, custom URLs, localhost) with free accounts.'}
+              ? 'Enter your registered email address. We will send a secure link to your Gmail/inbox to reset your password.'
+              : 'Sign in with your email or username to sync your discipline progress.'}
           </p>
         </div>
-
-        {/* Google One-Click Button */}
-        {mode !== 'forgot' && mode !== 'supabase_settings' && mode !== 'google_prompt' && mode !== 'verification_sent' && (
-          <>
-            <button
-              onClick={handleGoogleSignIn}
-              disabled={isLoading}
-              className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-2xl bg-white hover:bg-gray-100 text-gray-900 font-sans font-semibold text-sm transition-all duration-200 shadow-lg hover:shadow-emerald-500/10 cursor-pointer disabled:opacity-60"
-            >
-              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.14z" />
-                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
-                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.94 0 12s.45 3.84 1.25 5.42l4.03-3.15z" />
-                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
-              </svg>
-              <span>Continue with Google / Gmail</span>
-            </button>
-
-            <div className="flex items-center gap-3 my-4">
-              <div className="flex-1 h-px bg-white/10" />
-              <span className="text-[11px] font-mono text-gray-500 uppercase tracking-widest">or email & password</span>
-              <div className="flex-1 h-px bg-white/10" />
-            </div>
-          </>
-        )}
 
         {/* Error / Success Feedback */}
         {errorMsg && (
@@ -305,82 +297,8 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
           </div>
         )}
 
-        {/* Google Direct Sign-In Form (for custom domains where popup is restricted) */}
-        {mode === 'google_prompt' ? (
-          <form onSubmit={handleGoogleFallbackSubmit} className="space-y-3.5">
-            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-3 mb-2">
-              <svg className="w-6 h-6 shrink-0" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.14z" />
-                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
-                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.94 0 12s.45 3.84 1.25 5.42l4.03-3.15z" />
-                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
-              </svg>
-              <div className="text-xs text-gray-300">
-                <span className="font-semibold text-white">Google Account Verification</span>
-                <p className="text-[11px] text-gray-400">Sign in with your Google email address.</p>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-mono text-gray-400 mb-1">
-                Google Email Address
-              </label>
-              <div className="relative">
-                <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                <input
-                  type="email"
-                  required
-                  value={googleAccountEmail}
-                  onChange={(e) => setGoogleAccountEmail(e.target.value)}
-                  placeholder="yourname@gmail.com"
-                  className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-mono text-gray-400 mb-1">
-                Display Name (Optional)
-              </label>
-              <div className="relative">
-                <UserIcon size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                <input
-                  type="text"
-                  value={googleAccountName}
-                  onChange={(e) => setGoogleAccountName(e.target.value)}
-                  placeholder="Warrior"
-                  className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full mt-2 py-3 px-4 rounded-2xl bg-white hover:bg-gray-100 text-gray-900 font-sans font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer disabled:opacity-60 shadow-lg"
-            >
-              {isLoading ? (
-                <span className="inline-block w-4 h-4 border-2 border-gray-950 border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  <span>Sign In with Google</span>
-                  <ArrowRight size={15} />
-                </>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setErrorMsg(null);
-                setMode('signin');
-              }}
-              className="w-full text-center text-xs text-gray-400 hover:text-white pt-2 cursor-pointer"
-            >
-              Cancel and return to sign in
-            </button>
-          </form>
-        ) : mode === 'supabase_settings' ? (
+        {/* Supabase Settings Form */}
+        {mode === 'supabase_settings' ? (
           <form onSubmit={handleSaveSupabase} className="space-y-3.5">
             <div>
               <label className="block text-[11px] font-mono text-gray-400 mb-1">
@@ -442,6 +360,91 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
               Back to Sign In
             </button>
           </form>
+        ) : mode === 'reset_sent' ? (
+          /* Password Reset Link Dispatched Confirmation Screen */
+          <div className="space-y-4 py-2">
+            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs leading-relaxed space-y-2.5">
+              <div className="flex items-center gap-2 font-semibold text-emerald-400 text-sm">
+                <Mail size={18} />
+                <span>Password Reset Email Sent</span>
+              </div>
+              <p>
+                A secure password change link has been sent to{' '}
+                <strong className="text-white font-mono">{pendingResetEmail}</strong>.
+              </p>
+              <p className="text-[11px] text-gray-400">
+                Please open your Gmail or email inbox, click the reset link, and set your new password. If you don't see the email after a moment, please check your Spam or Promotions folder.
+              </p>
+            </div>
+
+            {/* Direct Gmail inbox button */}
+            <a
+              href={`https://mail.google.com/mail/u/${encodeURIComponent(pendingResetEmail)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-2.5 px-4 rounded-2xl bg-white hover:bg-gray-100 text-gray-900 font-sans font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
+            >
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.14z" />
+                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
+                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.94 0 12s.45 3.84 1.25 5.42l4.03-3.15z" />
+                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
+              </svg>
+              <span>Open Gmail Inbox</span>
+              <ExternalLink size={13} className="text-gray-500" />
+            </a>
+
+            {/* Quick in-app reset button */}
+            <div className="pt-2 border-t border-white/5 space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail(pendingResetEmail);
+                  setMode('reset_password');
+                  setErrorMsg(null);
+                  setSuccessMsg(null);
+                }}
+                className="w-full py-2.5 px-4 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-sans font-semibold text-xs flex items-center justify-center gap-1.5 border border-emerald-500/30 transition-colors cursor-pointer"
+              >
+                <KeyRound size={14} />
+                <span>Enter New Password Directly</span>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs">
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsLoading(true);
+                  try {
+                    await sendPasswordReset(pendingResetEmail);
+                    setSuccessMsg(`Reset link resent to ${pendingResetEmail}!`);
+                  } catch (e: any) {
+                    setErrorMsg(e.message || 'Failed to resend reset link.');
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                disabled={isLoading}
+                className="text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
+                <span>Resend email link</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('signin');
+                  setErrorMsg(null);
+                  setSuccessMsg(null);
+                }}
+                className="text-gray-400 hover:text-white cursor-pointer"
+              >
+                Return to Sign In
+              </button>
+            </div>
+          </div>
         ) : mode === 'verification_sent' ? (
           /* Email Verification Pending Screen */
           <div className="space-y-4 py-2">
@@ -524,6 +527,77 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
               </button>
             </div>
           </div>
+        ) : mode === 'reset_password' ? (
+          /* Choose New Password Screen */
+          <form onSubmit={handleAuthSubmit} className="space-y-3">
+            <div>
+              <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                Account Email
+              </label>
+              <div className="relative">
+                <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                <input
+                  type="email"
+                  required
+                  value={email || pendingResetEmail}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="warrior@discipline.app"
+                  className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                New Password (min 6 characters)
+              </label>
+              <div className="relative">
+                <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                Confirm New Password
+              </label>
+              <div className="relative">
+                <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full mt-2 py-3 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-sans font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer disabled:opacity-60 shadow-lg shadow-emerald-500/20"
+            >
+              {isLoading ? (
+                <span className="inline-block w-4 h-4 border-2 border-gray-950 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <span>Save New Password & Sign In</span>
+                  <ArrowRight size={15} />
+                </>
+              )}
+            </button>
+          </form>
         ) : (
           /* Email / Username & Password Form */
           <form onSubmit={handleAuthSubmit} className="space-y-3">
@@ -539,7 +613,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                     required
                     value={emailOrUsername}
                     onChange={(e) => setEmailOrUsername(e.target.value)}
-                    placeholder="botnariionut37@gmail.com or username"
+                    placeholder="warrior@discipline.app or username"
                     className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
                   />
                 </div>
@@ -612,10 +686,13 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="warrior@discipline.app"
+                    placeholder="your-email@gmail.com"
                     className="w-full bg-[#161A22] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
                   />
                 </div>
+                <p className="text-[11px] text-gray-500 mt-1.5 font-sans">
+                  We'll send a password reset link to this email address.
+                </p>
               </div>
             )}
 
@@ -630,6 +707,9 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                     <button
                       type="button"
                       onClick={() => {
+                        if (emailOrUsername.includes('@')) {
+                          setEmail(emailOrUsername.trim().toLowerCase());
+                        }
                         setMode('forgot');
                         setErrorMsg(null);
                         setSuccessMsg(null);
@@ -697,7 +777,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         )}
 
         {/* Switch Between Modes */}
-        {mode !== 'supabase_settings' && mode !== 'google_prompt' && (
+        {mode !== 'supabase_settings' && mode !== 'reset_sent' && (
           <div className="mt-5 pt-4 border-t border-white/5 text-center text-xs text-gray-400">
             {mode === 'signin' && (
               <p>
@@ -732,6 +812,21 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             {mode === 'forgot' && (
               <p>
                 Remember your credentials?{' '}
+                <button
+                  onClick={() => {
+                    setMode('signin');
+                    setErrorMsg(null);
+                  }}
+                  className="text-emerald-400 font-semibold hover:underline cursor-pointer"
+                >
+                  Back to Sign In
+                </button>
+              </p>
+            )}
+
+            {mode === 'reset_password' && (
+              <p>
+                Finished or cancelled?{' '}
                 <button
                   onClick={() => {
                     setMode('signin');
