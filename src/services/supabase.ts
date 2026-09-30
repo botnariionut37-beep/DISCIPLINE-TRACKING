@@ -60,12 +60,17 @@ export function purgeAllExistingAccounts(): void {
   }
 }
 
-// Automatically execute the one-time purge for all existing accounts on initial boot
-if (typeof window !== 'undefined') {
-  if (localStorage.getItem(ACCOUNTS_PURGED_FLAG_KEY) !== 'done') {
-    purgeAllExistingAccounts();
-    localStorage.setItem(ACCOUNTS_PURGED_FLAG_KEY, 'done');
-  }
+// Set default real Supabase project credentials provided by the user
+export const DEFAULT_SUPABASE_URL = 'https://wulenpgjvtezguftdyyx.supabase.co';
+export const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1bGVucGdqdnRlemd1ZnRkeXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3OTMzMTYsImV4cCI6MjEwNjM2OTMxNn0.MVtHYzO3AqdGhcn0ZCP0AnvdH6t7vpwXVsXb48QvS9U';
+
+export function cleanSupabaseUrl(url: string): string {
+  if (!url) return '';
+  let cleaned = url.trim();
+  // Remove trailing slashes and /rest/v1 suffix if pasted from Supabase API docs
+  cleaned = cleaned.replace(/\/rest\/v1\/?$/i, '');
+  cleaned = cleaned.replace(/\/+$/, '');
+  return cleaned;
 }
 
 export interface AppAuthUser {
@@ -85,14 +90,18 @@ export interface AppAuthUser {
 let supabaseInstance: SupabaseClient | null = null;
 
 export function getStoredSupabaseConfig(): { url: string; anonKey: string } {
-  const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-  const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
-  const localUrl = localStorage.getItem(SUPABASE_URL_KEY) || '';
-  const localKey = localStorage.getItem(SUPABASE_ANON_KEY) || '';
+  const envUrl = cleanSupabaseUrl((import.meta as any).env?.VITE_SUPABASE_URL || '');
+  const envKey = ((import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '').trim();
+  const localUrl = cleanSupabaseUrl(localStorage.getItem(SUPABASE_URL_KEY) || '');
+  const localKey = (localStorage.getItem(SUPABASE_ANON_KEY) || '').trim();
+
+  // Use configured credentials, defaulting to the live project credentials
+  const effectiveUrl = localUrl || envUrl || DEFAULT_SUPABASE_URL;
+  const effectiveKey = localKey || envKey || DEFAULT_SUPABASE_ANON_KEY;
 
   return {
-    url: localUrl || envUrl,
-    anonKey: localKey || envKey
+    url: cleanSupabaseUrl(effectiveUrl),
+    anonKey: effectiveKey.trim()
   };
 }
 
@@ -122,8 +131,11 @@ export function initSupabase(): SupabaseClient | null {
 }
 
 export function saveSupabaseConfig(url: string, anonKey: string) {
-  localStorage.setItem(SUPABASE_URL_KEY, url.trim());
-  localStorage.setItem(SUPABASE_ANON_KEY, anonKey.trim());
+  const cleanedUrl = cleanSupabaseUrl(url);
+  const cleanedKey = anonKey.trim();
+  localStorage.setItem(SUPABASE_URL_KEY, cleanedUrl);
+  localStorage.setItem(SUPABASE_ANON_KEY, cleanedKey);
+  supabaseInstance = null;
   return initSupabase();
 }
 

@@ -1,6 +1,6 @@
 {
-  "summary":  "Plan complet de implementare pentru migrarea de la stocare locală la Supabase: autentificare centralizată în cloud, salvarea progresului și sincronizarea în timp real a clasamentului (leaderboard) între toate dispozitivele utilizatorilor.",
-  "updatedAt":  "2026-09-30T19:33:18.285634876Z",
+  "summary":  "Plan de implementare finalizat: proiectul real Supabase (wulenpgjvtezguftdyyx) a fost integrat direct în cod, datele de autentificare și scorurile sunt salvate în Supabase în timp real, iar clasificarea tuturor utilizatorilor este ordonată descrescător.",
+  "updatedAt":  "2026-09-30T19:49:53.577442666Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
