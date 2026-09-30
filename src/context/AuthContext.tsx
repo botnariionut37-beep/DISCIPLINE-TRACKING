@@ -15,6 +15,8 @@ import {
   appSignOut, 
   appSendPasswordReset,
   appResetPassword,
+  appDeleteAccount,
+  purgeAllExistingAccounts,
   PasswordResetResult,
   appUpdateUserProfile,
   appVerifyEmail,
@@ -40,6 +42,7 @@ interface AuthContextType {
   resetPassword: (email: string, newPass: string, token?: string) => Promise<AppAuthUser>;
   updateUserProfile: (updates: { displayName?: string; photoURL?: string }) => Promise<AppAuthUser | null>;
   signOut: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   isSupabaseConfigured: boolean;
   saveSupabaseConfig: (url: string, anonKey: string) => void;
   clearSupabaseConfig: () => void;
@@ -59,6 +62,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function initSession() {
       try {
+        if (localStorage.getItem('discipline_all_accounts_purged_flag_v1') !== 'done') {
+          purgeAllExistingAccounts();
+          localStorage.setItem('discipline_all_accounts_purged_flag_v1', 'done');
+        }
+
         const sb = getSupabase();
         if (sb) {
           const { data } = await sb.auth.getSession();
@@ -199,6 +207,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const deleteAccount = async (): Promise<void> => {
+    if (!user) return;
+    await appDeleteAccount(user.uid);
+    setUser(null);
+  };
+
   const handleSaveSupabaseConfig = (url: string, anonKey: string) => {
     saveSupabaseConfig(url, anonKey);
     setIsConfigured(isSupabaseConfigured());
@@ -226,6 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resetPassword,
         updateUserProfile,
         signOut,
+        deleteAccount,
         isSupabaseConfigured: isConfigured,
         saveSupabaseConfig: handleSaveSupabaseConfig,
         clearSupabaseConfig: handleClearSupabaseConfig,

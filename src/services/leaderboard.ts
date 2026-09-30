@@ -245,4 +245,27 @@ export function subscribeToLeaderboard(
   };
 }
 
+/**
+ * Completely removes an entry from the synchronized local community store and Supabase leaderboard
+ */
+export async function removeLeaderboardEntry(userId: string): Promise<void> {
+  if (!userId) return;
+
+  // 1. Remove from local community storage
+  const existing = getStoredCommunityEntries();
+  const filtered = existing.filter(e => e.userId !== userId);
+  saveCommunityEntries(filtered);
+
+  // 2. Remove from Supabase if connected
+  const sb = getSupabase();
+  if (sb) {
+    try {
+      await sb.from('discipline_leaderboard').delete().eq('user_id', userId);
+    } catch (e) {
+      console.warn('[Supabase Leaderboard] Delete entry notice:', e);
+    }
+  }
+}
+
+
 

@@ -17,7 +17,9 @@ import {
   Sparkles,
   ChevronDown,
   Trophy,
-  Camera
+  Camera,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 
 interface UserMenuProps {
@@ -37,8 +39,10 @@ export default function UserMenu({
   onOpenLeaderboardSettings,
   onOpenProfilePhoto
 }: UserMenuProps) {
-  const { user, signOut, isAdmin, isSupabaseConfigured } = useAuth();
+  const { user, signOut, deleteAccount, isAdmin, isSupabaseConfigured } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on outside click
@@ -247,17 +251,91 @@ export default function UserMenu({
             </button>
           )}
 
+          {/* Delete Account Button */}
+          <button
+            onClick={() => {
+              setIsOpen(false);
+              setShowDeleteConfirm(true);
+            }}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 mb-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 font-sans font-medium text-xs transition-colors cursor-pointer"
+            title="Permanently delete account and remove from leaderboard"
+          >
+            <Trash2 size={13} />
+            <span>Delete Account</span>
+          </button>
+
           {/* Sign Out Button */}
           <button
             onClick={async () => {
               setIsOpen(false);
               await signOut();
             }}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-sans font-medium text-xs transition-colors cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white font-sans font-medium text-xs transition-colors cursor-pointer"
           >
             <LogOut size={13} />
             <span>Sign Out</span>
           </button>
+        </div>
+      )}
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
+          <div 
+            className="relative w-full max-w-sm bg-[#0C0E12] border border-rose-500/30 rounded-3xl p-6 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 text-rose-400">
+              <span className="p-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 shrink-0">
+                <Trash2 size={20} />
+              </span>
+              <div>
+                <h3 className="text-base font-sans font-bold text-white">Delete Account?</h3>
+                <p className="text-[11px] text-gray-400 font-sans">Permanent & immediate removal</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-300 leading-relaxed font-sans">
+              Are you sure you want to delete your account? Just after you press <strong className="text-white">"Confirm"</strong>, your warrior account will be permanently deleted and immediately removed from the leaderboard.
+            </p>
+
+            <div className="flex items-center gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={async () => {
+                  setIsDeleting(true);
+                  try {
+                    await deleteAccount();
+                    setShowDeleteConfirm(false);
+                  } catch (err) {
+                    console.error('Account deletion error:', err);
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-lg shadow-rose-600/30 cursor-pointer disabled:opacity-60 flex items-center justify-center gap-1.5"
+              >
+                {isDeleting ? (
+                  <RefreshCw size={13} className="animate-spin" />
+                ) : (
+                  <>
+                    <Trash2 size={13} />
+                    <span>Confirm</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

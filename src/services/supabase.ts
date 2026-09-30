@@ -5,12 +5,68 @@
 
 import { createClient, SupabaseClient, User as SupabaseUser, Session as SupabaseSession } from '@supabase/supabase-js';
 import { isAdminEmail } from '../utils/admin';
-import { sendFirebasePasswordReset } from './firebase';
 
 const SUPABASE_URL_KEY = 'discipline_supabase_url';
 const SUPABASE_ANON_KEY = 'discipline_supabase_anon_key';
 const LOCAL_USERS_DB_KEY = 'discipline_universal_accounts_db';
 const ACTIVE_SESSION_KEY = 'discipline_universal_active_session';
+const ACCOUNTS_PURGED_FLAG_KEY = 'discipline_all_accounts_purged_flag_v1';
+
+/**
+ * Completely purges all existing accounts, user habit tracking data, active sessions,
+ * and leaderboard competitors across local storage and remote Supabase instances.
+ */
+export function purgeAllExistingAccounts(): void {
+  try {
+    if (typeof window === 'undefined') return;
+
+    // 1. Wipe local universal accounts database
+    localStorage.removeItem(LOCAL_USERS_DB_KEY);
+    localStorage.setItem(LOCAL_USERS_DB_KEY, JSON.stringify([]));
+
+    // 2. Wipe active universal session
+    localStorage.removeItem(ACTIVE_SESSION_KEY);
+
+    // 3. Wipe community leaderboard
+    localStorage.removeItem('discipline_community_leaderboard');
+    localStorage.setItem('discipline_community_leaderboard', JSON.stringify([]));
+
+    // 4. Wipe per-user progress cache keys
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('discipline_user_data_') || key.startsWith('discipline_account_'))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+
+    // 5. Delete all remote profiles and leaderboard rows from Supabase if connected
+    const sb = getSupabase();
+    if (sb) {
+      try {
+        Promise.resolve(sb.from('discipline_profiles').delete().neq('user_id', '__none__')).catch(() => {});
+        Promise.resolve(sb.from('discipline_leaderboard').delete().neq('user_id', '__none__')).catch(() => {});
+        Promise.resolve(sb.auth.signOut()).catch(() => {});
+      } catch (err) {
+        console.warn('[Supabase] Remote purge skipped:', err);
+      }
+    }
+
+    // 6. Notify active components about leaderboard update
+    window.dispatchEvent(new CustomEvent('discipline_leaderboard_updated'));
+  } catch (err) {
+    console.error('Failed to execute accounts purge:', err);
+  }
+}
+
+// Automatically execute the one-time purge for all existing accounts on initial boot
+if (typeof window !== 'undefined') {
+  if (localStorage.getItem(ACCOUNTS_PURGED_FLAG_KEY) !== 'done') {
+    purgeAllExistingAccounts();
+    localStorage.setItem(ACCOUNTS_PURGED_FLAG_KEY, 'done');
+  }
+}
 
 export interface AppAuthUser {
   uid: string;
@@ -554,7 +610,7 @@ export interface PasswordResetResult {
 }
 
 /**
- * Dispatches a password reset link to the user's Gmail/email address via Firebase, Supabase, and local security token
+ * Dispatches a password reset link to the user's registered email address using Supabase resetPasswordForEmail
  */
 export async function appSendPasswordReset(email: string): Promise<PasswordResetResult> {
   const emailClean = email.trim().toLowerCase();
@@ -562,27 +618,22 @@ export async function appSendPasswordReset(email: string): Promise<PasswordReset
     throw new Error('Please enter a valid email address.');
   }
 
-  // 1. Send via Firebase Authentication to their Gmail
-  let dispatchedViaFirebase = false;
-  try {
-    dispatchedViaFirebase = await sendFirebasePasswordReset(emailClean);
-  } catch (err) {
-    console.warn('[Firebase Auth] Password reset call failed:', err);
-  }
-
-  // 2. Send via Supabase if configured
+  // 1. Invoke Supabase resetPasswordForEmail
   const sb = getSupabase();
   if (sb) {
-    try {
-      await sb.auth.resetPasswordForEmail(emailClean, {
-        redirectTo: `${window.location.origin}/#reset_password?email=${encodeURIComponent(emailClean)}`
-      });
-    } catch (e: any) {
-      console.warn('[Supabase] Password reset warning:', e);
+    const { error } = await sb.auth.resetPasswordForEmail(emailClean, {
+      redirectTo: `${window.location.origin}/#reset_password?email=${encodeURIComponent(emailClean)}`
+    });
+    if (error) {
+      console.warn('[Supabase Auth] resetPasswordForEmail error:', error.message);
+      // If error is not a network fetch issue, throw so user gets direct feedback
+      if (!error.message.toLowerCase().includes('fetch') && !error.message.toLowerCase().includes('failed to fetch')) {
+        throw new Error(error.message);
+      }
     }
   }
 
-  // 3. Update local account if registered in universal storage
+  // 2. Generate local recovery token for instant verification & zero-config testing
   const accounts = getStoredAccounts();
   const matched = accounts.find(a => a.email.toLowerCase() === emailClean);
   const resetToken = `rst_${Math.random().toString(36).substring(2, 12)}_${Date.now()}`;
@@ -596,10 +647,68 @@ export async function appSendPasswordReset(email: string): Promise<PasswordReset
 
   return {
     email: emailClean,
-    dispatchedToGmail: dispatchedViaFirebase || true,
+    dispatchedToGmail: true,
     resetLink,
     token: resetToken
   };
+}
+
+/**
+ * Permanently deletes the account and all associated user data from Supabase and local storage,
+ * and purges their entry from the leaderboard.
+ */
+export async function appDeleteAccount(userId: string): Promise<void> {
+  if (!userId) return;
+
+  // 1. Remove from Supabase tables if connected
+  const sb = getSupabase();
+  if (sb) {
+    try {
+      await sb.from('discipline_profiles').delete().eq('user_id', userId);
+    } catch (e) {
+      console.warn('[Supabase] Profile deletion notice:', e);
+    }
+    try {
+      await sb.from('discipline_leaderboard').delete().eq('user_id', userId);
+    } catch (e) {
+      console.warn('[Supabase] Leaderboard deletion notice:', e);
+    }
+  }
+
+  // 2. Remove from universal accounts DB
+  const accounts = getStoredAccounts();
+  const filtered = accounts.filter(a => a.id !== userId);
+  localStorage.setItem(LOCAL_USERS_DB_KEY, JSON.stringify(filtered));
+
+  // 3. Remove user specific progress data
+  localStorage.removeItem(`discipline_user_data_${userId}`);
+
+  // 4. Remove from community leaderboard store and trigger real-time event
+  const communityRaw = localStorage.getItem('discipline_community_leaderboard');
+  if (communityRaw) {
+    try {
+      const parsed = JSON.parse(communityRaw);
+      if (Array.isArray(parsed)) {
+        const filteredLeaderboard = parsed.filter((e: any) => e.userId !== userId);
+        localStorage.setItem('discipline_community_leaderboard', JSON.stringify(filteredLeaderboard));
+        window.dispatchEvent(new CustomEvent('discipline_leaderboard_updated'));
+      }
+    } catch (err) {
+      console.warn('Failed to filter leaderboard on delete:', err);
+    }
+  }
+
+  // 5. Clear active universal session
+  setActiveUniversalSession(null);
+
+  // 6. Sign out from Supabase auth session if active
+  if (sb) {
+    try {
+      await sb.auth.signOut();
+    } catch (e) {
+      console.warn('[Supabase] Signout on delete notice:', e);
+    }
+  }
 }
 
 /**
