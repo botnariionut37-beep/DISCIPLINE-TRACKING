@@ -121,21 +121,11 @@ export async function publishLeaderboardSnapshot(
     updatedAt: new Date().toISOString()
   };
 
-  // 1. Update synchronized community storage immediately
-  const existing = getStoredCommunityEntries();
-  const existingIdx = existing.findIndex(e => e.userId === userId);
-  if (existingIdx >= 0) {
-    existing[existingIdx] = entry;
-  } else {
-    existing.push(entry);
-  }
-  saveCommunityEntries(existing);
-
-  // 2. Upsert to Supabase if connected
   const sb = getSupabase();
   if (sb) {
     try {
-      await sb.from('discipline_leaderboard').upsert({
+      // 1. Direct authoritative save to Supabase table discipline_leaderboard (not localStorage)
+      const { error } = await sb.from('discipline_leaderboard').upsert({
         user_id: entry.userId,
         display_name: entry.displayName,
         custom_alias: entry.customAlias,
@@ -151,71 +141,95 @@ export async function publishLeaderboardSnapshot(
         top_habits: entry.topHabits,
         is_public: entry.isPublic,
         updated_at: entry.updatedAt
-      });
+      }, { onConflict: 'user_id' });
+
+      if (error) {
+        console.error('[Supabase Leaderboard] Table upsert error:', error.message);
+      }
     } catch (e) {
-      console.warn('[Supabase Leaderboard] Table upsert skipped:', e);
+      console.error('[Supabase Leaderboard] Table upsert exception:', e);
     }
+  } else {
+    // Fallback to local storage only if Supabase is not configured
+    const existing = getStoredCommunityEntries();
+    const existingIdx = existing.findIndex(e => e.userId === userId);
+    if (existingIdx >= 0) {
+      existing[existingIdx] = entry;
+    } else {
+      existing.push(entry);
+    }
+    saveCommunityEntries(existing);
+  }
+
+  // Notify active listeners
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(LEADERBOARD_EVENT));
   }
 }
 
 /**
- * Subscribe to synchronized leaderboard updates across Supabase and local community store
+ * Subscribe to synchronized leaderboard updates across Supabase with Realtime WebSocket support.
+ * Fetches all users from Supabase table discipline_leaderboard ordered descending by discipline_score.
  */
 export function subscribeToLeaderboard(
   currentUserId: string | null,
   onUpdate: (entries: LeaderboardEntry[]) => void
 ): () => void {
   let isMounted = true;
+  let realtimeChannel: any = null;
 
   const refreshEntries = async () => {
-    let combined = getStoredCommunityEntries();
-
-    // Query Supabase table if available
     const sb = getSupabase();
     if (sb) {
       try {
+        // Interogare directă în Supabase care aduce scorurile tuturor utilizatorilor ordonate descrescător
         const { data, error } = await sb
           .from('discipline_leaderboard')
           .select('*')
-          .eq('is_public', true);
+          .order('discipline_score', { ascending: false })
+          .order('qualifying_weeks', { ascending: false });
 
-        if (!error && Array.isArray(data) && data.length > 0) {
-          const remoteMapped: LeaderboardEntry[] = data.map((d: any) => ({
-            userId: d.user_id,
-            displayName: d.display_name || 'Warrior',
-            customAlias: d.custom_alias,
-            photoURL: d.photo_url,
-            rankIndex: Number(d.rank_index) || 1,
-            rankId: d.rank_id || 'bronz',
-            rankName: d.rank_name || 'Bronz',
-            tierCategory: d.tier_category || 'Foundation',
-            qualifyingWeeks: Number(d.qualifying_weeks) || 0,
-            disciplineScore: Number(d.discipline_score) || 0,
-            weeklyCompletedChecks: Number(d.weekly_completed_checks) || 0,
-            weeklyTargetChecks: Number(d.weekly_target_checks) || 35,
-            topHabits: d.top_habits || [],
-            isPublic: Boolean(d.is_public),
-            updatedAt: d.updated_at || new Date().toISOString()
-          }));
+        if (error) {
+          console.error('[Supabase Leaderboard] Query error:', error.message);
+        } else if (Array.isArray(data)) {
+          const remoteMapped: LeaderboardEntry[] = data
+            .filter((d: any) => d.user_id && !d.user_id.startsWith('seed-warrior-'))
+            .map((d: any) => ({
+              userId: d.user_id,
+              displayName: d.custom_alias || d.display_name || 'Warrior',
+              customAlias: d.custom_alias,
+              photoURL: d.photo_url,
+              rankIndex: Number(d.rank_index) || 1,
+              rankId: d.rank_id || 'bronz',
+              rankName: d.rank_name || 'Bronz',
+              tierCategory: d.tier_category || 'Foundation',
+              qualifyingWeeks: Number(d.qualifying_weeks) || 0,
+              disciplineScore: Number(d.discipline_score) || 0,
+              weeklyCompletedChecks: Number(d.weekly_completed_checks) || 0,
+              weeklyTargetChecks: Number(d.weekly_target_checks) || 35,
+              topHabits: d.top_habits || [],
+              isPublic: d.is_public !== false,
+              updatedAt: d.updated_at || new Date().toISOString()
+            }));
 
-          // Merge remote entries with local entries, filtering bots strictly
-          const map = new Map<string, LeaderboardEntry>();
-          combined
-            .filter(e => e.userId && !e.userId.startsWith('seed-warrior-'))
-            .forEach(e => map.set(e.userId, e));
-          remoteMapped
-            .filter(e => e.userId && !e.userId.startsWith('seed-warrior-'))
-            .forEach(e => map.set(e.userId, e));
-          combined = Array.from(map.values());
+          if (isMounted) {
+            // Filtrăm dacă este public sau este utilizatorul curent
+            const visible = remoteMapped.filter(
+              e => e.isPublic || (currentUserId && e.userId === currentUserId)
+            );
+            const sorted = sortLeaderboardEntries(visible);
+            onUpdate(sorted);
+            return;
+          }
         }
       } catch (err) {
-        // Fallback to local entries seamlessly
+        console.warn('[Supabase Leaderboard] Remote query error, checking local fallback:', err);
       }
     }
 
+    // Fallback local dacă Supabase nu este configurat
     if (!isMounted) return;
-
-    // Filter public or current user entries (only real users, no seed warriors)
+    const combined = getStoredCommunityEntries();
     const visible = combined
       .filter(e => e.userId && !e.userId.startsWith('seed-warrior-'))
       .filter(e => e.isPublic || (currentUserId && e.userId === currentUserId));
@@ -226,6 +240,31 @@ export function subscribeToLeaderboard(
   // Initial load
   refreshEntries();
 
+  // Abonare la Supabase Realtime pentru actualizări instant între toate dispozitivele
+  const sb = getSupabase();
+  if (sb) {
+    try {
+      realtimeChannel = sb
+        .channel('discipline_leaderboard_realtime')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'discipline_leaderboard'
+          },
+          () => {
+            if (isMounted) {
+              refreshEntries();
+            }
+          }
+        )
+        .subscribe();
+    } catch (rtErr) {
+      console.warn('[Supabase Leaderboard] Realtime channel setup notice:', rtErr);
+    }
+  }
+
   // Listen for local and cross-tab updates
   const handleUpdate = () => {
     if (isMounted) refreshEntries();
@@ -234,36 +273,49 @@ export function subscribeToLeaderboard(
   window.addEventListener(LEADERBOARD_EVENT, handleUpdate);
   window.addEventListener('storage', handleUpdate);
 
-  // Periodic refresh every 10 seconds for real-time community feel
-  const interval = setInterval(refreshEntries, 10000);
+  // Periodic refresh every 5 seconds ca rezervă pentru sincronizare continuă
+  const interval = setInterval(refreshEntries, 5000);
 
   return () => {
     isMounted = false;
     window.removeEventListener(LEADERBOARD_EVENT, handleUpdate);
     window.removeEventListener('storage', handleUpdate);
     clearInterval(interval);
+    if (realtimeChannel && sb) {
+      try {
+        sb.removeChannel(realtimeChannel);
+      } catch {}
+    }
   };
 }
 
 /**
- * Completely removes an entry from the synchronized local community store and Supabase leaderboard
+ * Completely removes an entry from Supabase leaderboard table and local community store
  */
 export async function removeLeaderboardEntry(userId: string): Promise<void> {
   if (!userId) return;
 
-  // 1. Remove from local community storage
+  // 1. Remove from Supabase if connected
+  const sb = getSupabase();
+  if (sb) {
+    try {
+      const { error } = await sb.from('discipline_leaderboard').delete().eq('user_id', userId);
+      if (error) {
+        console.error('[Supabase Leaderboard] Delete error:', error.message);
+      }
+    } catch (e) {
+      console.warn('[Supabase Leaderboard] Delete entry notice:', e);
+    }
+  }
+
+  // 2. Remove from local community storage
   const existing = getStoredCommunityEntries();
   const filtered = existing.filter(e => e.userId !== userId);
   saveCommunityEntries(filtered);
 
-  // 2. Remove from Supabase if connected
-  const sb = getSupabase();
-  if (sb) {
-    try {
-      await sb.from('discipline_leaderboard').delete().eq('user_id', userId);
-    } catch (e) {
-      console.warn('[Supabase Leaderboard] Delete entry notice:', e);
-    }
+  // 3. Dispatch update
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(LEADERBOARD_EVENT));
   }
 }
 

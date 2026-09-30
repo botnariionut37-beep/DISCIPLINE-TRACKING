@@ -28,6 +28,35 @@ interface AuthModalProps {
 
 type AuthMode = 'signin' | 'signup' | 'forgot' | 'reset_sent' | 'reset_password' | 'verification_sent' | 'supabase_settings';
 
+export const SUPABASE_LEADERBOARD_SQL = `-- 1. Create Leaderboard Table in Supabase
+create table if not exists public.discipline_leaderboard (
+  user_id text primary key,
+  display_name text not null,
+  custom_alias text,
+  photo_url text,
+  rank_index integer default 1,
+  rank_id text default 'bronz',
+  rank_name text default 'Bronz',
+  tier_category text default 'Foundation',
+  qualifying_weeks integer default 0,
+  discipline_score integer default 0,
+  weekly_completed_checks integer default 0,
+  weekly_target_checks integer default 35,
+  top_habits jsonb default '[]'::jsonb,
+  is_public boolean default true,
+  updated_at timestamptz default now()
+);
+
+-- 2. Enable Realtime & RLS
+alter table public.discipline_leaderboard enable row level security;
+drop policy if exists "Allow public read on leaderboard" on public.discipline_leaderboard;
+create policy "Allow public read on leaderboard" on public.discipline_leaderboard for select using (true);
+drop policy if exists "Allow upsert on leaderboard" on public.discipline_leaderboard;
+create policy "Allow upsert on leaderboard" on public.discipline_leaderboard for all using (true) with check (true);
+
+-- 3. Broadcast updates in Realtime to all devices
+alter publication supabase_realtime add table public.discipline_leaderboard;`;
+
 export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const { 
     signInWithEmail, 
@@ -350,6 +379,28 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   Clear
                 </button>
               )}
+            </div>
+
+            <div className="mt-4 p-3 rounded-2xl bg-white/5 border border-white/10 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-mono font-semibold text-emerald-400 text-[11px]">SQL Schema (Leaderboard Table & Realtime)</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(SUPABASE_LEADERBOARD_SQL);
+                    setSuccessMsg('SQL copied! Paste into Supabase SQL Editor and click Run.');
+                  }}
+                  className="text-[10px] text-emerald-400 hover:text-emerald-300 font-mono underline cursor-pointer"
+                >
+                  Copy SQL
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-400 leading-normal">
+                Run this SQL in your Supabase SQL Editor to create the leaderboard table and enable real-time synchronization across devices.
+              </p>
+              <pre className="text-[10px] text-gray-300 font-mono overflow-x-auto p-2 bg-[#0E1117] rounded-xl max-h-32 select-all leading-tight">
+                {SUPABASE_LEADERBOARD_SQL}
+              </pre>
             </div>
 
             <button

@@ -336,7 +336,7 @@ export default function App() {
         categories,
         leaderboardSettings
       );
-    }, 1000);
+    }, 400);
     return () => clearTimeout(timer);
   }, [user, rankProgress, calculatedStats, categories, leaderboardSettings]);
 

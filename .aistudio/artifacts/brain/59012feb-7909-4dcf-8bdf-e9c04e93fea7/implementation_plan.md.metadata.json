@@ -1,6 +1,6 @@
 {
-  "summary": "Plan to integrate official Firebase Google Authentication popup/redirect so clicking 'Continue with Google / Gmail' triggers genuine Google OAuth account selection (accounts.google.com), while retaining the password requirement fallback if needed.",
-  "updatedAt": "2026-09-29T19:16:17.885004510Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "Plan complet de implementare pentru migrarea de la stocare locală la Supabase: autentificare centralizată în cloud, salvarea progresului și sincronizarea în timp real a clasamentului (leaderboard) între toate dispozitivele utilizatorilor.",
+  "updatedAt":  "2026-09-30T19:33:18.285634876Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }
