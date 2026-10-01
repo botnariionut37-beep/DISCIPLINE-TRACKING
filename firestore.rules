@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Community Discipline Leaderboard Collection
+    match /discipline_leaderboard/{userId} {
+      // Allow public reads if the entry is configured as public, or if reader is the owner
+      allow read: if isValidId(userId) && (
+        resource.data.isPublic == true ||
+        (isSignedIn() && request.auth.uid == userId)
+      );
+
+      // Allow creation, updates, and deletion by the authenticated owner
+      allow create, update: if isOwner(userId) && isValidId(userId) &&
+        request.resource.data.userId == request.auth.uid;
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+    }
+
+    // User Private Habit Tracking Data
+    match /discipline_user_data/{userId} {
+      allow read, write: if isOwner(userId) && isValidId(userId);
+    }
+  }
+}

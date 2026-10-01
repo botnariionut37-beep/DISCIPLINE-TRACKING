@@ -28,37 +28,9 @@ interface AuthModalProps {
 
 type AuthMode = 'signin' | 'signup' | 'forgot' | 'reset_sent' | 'reset_password' | 'verification_sent' | 'supabase_settings';
 
-export const SUPABASE_LEADERBOARD_SQL = `-- 1. Create Leaderboard Table in Supabase
-create table if not exists public.discipline_leaderboard (
-  user_id text primary key,
-  display_name text not null,
-  custom_alias text,
-  photo_url text,
-  rank_index integer default 1,
-  rank_id text default 'bronz',
-  rank_name text default 'Bronz',
-  tier_category text default 'Foundation',
-  qualifying_weeks integer default 0,
-  discipline_score integer default 0,
-  weekly_completed_checks integer default 0,
-  weekly_target_checks integer default 35,
-  top_habits jsonb default '[]'::jsonb,
-  is_public boolean default true,
-  updated_at timestamptz default now()
-);
-
--- 2. Enable Realtime & RLS
-alter table public.discipline_leaderboard enable row level security;
-drop policy if exists "Allow public read on leaderboard" on public.discipline_leaderboard;
-create policy "Allow public read on leaderboard" on public.discipline_leaderboard for select using (true);
-drop policy if exists "Allow upsert on leaderboard" on public.discipline_leaderboard;
-create policy "Allow upsert on leaderboard" on public.discipline_leaderboard for all using (true) with check (true);
-
--- 3. Broadcast updates in Realtime to all devices
-alter publication supabase_realtime add table public.discipline_leaderboard;`;
-
 export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const { 
+    signInWithGoogle,
     signInWithEmail, 
     signUpWithEmail, 
     verifyEmail,
@@ -154,6 +126,23 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       setSuccessMsg(`New verification link generated for ${pendingVerificationEmail}!`);
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to resend verification link.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      await signInWithGoogle();
+      setSuccessMsg('Successfully logged in with Gmail!');
+      setTimeout(() => {
+        onClose();
+      }, 600);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Gmail login failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -379,28 +368,6 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   Clear
                 </button>
               )}
-            </div>
-
-            <div className="mt-4 p-3 rounded-2xl bg-white/5 border border-white/10 text-xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-mono font-semibold text-emerald-400 text-[11px]">SQL Schema (Leaderboard Table & Realtime)</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(SUPABASE_LEADERBOARD_SQL);
-                    setSuccessMsg('SQL copied! Paste into Supabase SQL Editor and click Run.');
-                  }}
-                  className="text-[10px] text-emerald-400 hover:text-emerald-300 font-mono underline cursor-pointer"
-                >
-                  Copy SQL
-                </button>
-              </div>
-              <p className="text-[11px] text-gray-400 leading-normal">
-                Run this SQL in your Supabase SQL Editor to create the leaderboard table and enable real-time synchronization across devices.
-              </p>
-              <pre className="text-[10px] text-gray-300 font-mono overflow-x-auto p-2 bg-[#0E1117] rounded-xl max-h-32 select-all leading-tight">
-                {SUPABASE_LEADERBOARD_SQL}
-              </pre>
             </div>
 
             <button
@@ -651,7 +618,35 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
           </form>
         ) : (
           /* Email / Username & Password Form */
-          <form onSubmit={handleAuthSubmit} className="space-y-3">
+          <div className="space-y-3.5">
+            {(mode === 'signin' || mode === 'signup') && (
+              <div>
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  disabled={isLoading}
+                  className="w-full py-2.5 px-4 rounded-2xl bg-white hover:bg-gray-100 text-gray-900 font-sans font-semibold text-xs sm:text-sm flex items-center justify-center gap-2.5 transition-all duration-200 cursor-pointer shadow-md disabled:opacity-60 active:scale-[0.99] border border-gray-200"
+                >
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.14z" />
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
+                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.94 0 12s.45 3.84 1.25 5.42l4.03-3.15z" />
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
+                  </svg>
+                  <span>{mode === 'signup' ? 'Sign up with Gmail / Google' : 'Log in with Gmail'}</span>
+                </button>
+
+                <div className="relative flex items-center justify-center my-3.5">
+                  <div className="border-t border-white/10 w-full" />
+                  <span className="bg-[#0C0E12] px-2.5 text-[10px] font-mono text-gray-500 uppercase tracking-wider shrink-0">
+                    or continue with credentials
+                  </span>
+                  <div className="border-t border-white/10 w-full" />
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleAuthSubmit} className="space-y-3">
             {mode === 'signin' && (
               <div>
                 <label className="block text-[11px] font-mono text-gray-400 mb-1">
@@ -825,6 +820,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
               )}
             </button>
           </form>
+        </div>
         )}
 
         {/* Switch Between Modes */}

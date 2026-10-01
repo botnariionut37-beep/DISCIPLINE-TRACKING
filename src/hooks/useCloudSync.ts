@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState, useCallback, Dispatch, SetStateAction } from 'react';
 import { AppAuthUser, getSupabase } from '../services/supabase';
+import { fetchFirestoreUserData, saveFirestoreUserData } from '../services/firebase';
 import { Category, WeeklyChecks } from '../types';
 
 export type SyncStatus = 'local' | 'syncing' | 'synced' | 'error';
@@ -42,7 +43,6 @@ export function useCloudSync({
   // When user signs in or changes accounts, load that user's specific progress
   useEffect(() => {
     let isSubscribed = true;
-    const currentUid = user?.uid || null;
 
     async function loadUserData() {
       if (!user) {
@@ -101,7 +101,36 @@ export function useCloudSync({
         }
       }
 
-      // 2. Query Supabase profiles table if connected
+      // 2. Fetch from Firebase Firestore (discipline_user_data/{userId})
+      try {
+        const firestoreData = await fetchFirestoreUserData(user.uid);
+        if (firestoreData && isSubscribed) {
+          if (Array.isArray(firestoreData.categories) && firestoreData.categories.length > 0) {
+            setCategories(firestoreData.categories);
+          }
+          if (firestoreData.checks && typeof firestoreData.checks === 'object') {
+            setChecks(firestoreData.checks);
+          }
+          if (typeof firestoreData.bonusQualifyingWeeks === 'number') {
+            setBonusQualifyingWeeks(firestoreData.bonusQualifyingWeeks);
+          }
+
+          localStorage.setItem(userKey, JSON.stringify({
+            categories: firestoreData.categories || categories,
+            checks: firestoreData.checks || checks,
+            bonusQualifyingWeeks: firestoreData.bonusQualifyingWeeks ?? bonusQualifyingWeeks
+          }));
+
+          setSyncStatus('synced');
+          setLastSyncedAt(new Date());
+          prevUserUidRef.current = user.uid;
+          return;
+        }
+      } catch (fbErr) {
+        console.warn('[CloudSync] Firestore load notice:', fbErr);
+      }
+
+      // 3. Fallback to Supabase profiles table if connected
       const sb = getSupabase();
       if (sb) {
         try {
@@ -139,13 +168,18 @@ export function useCloudSync({
         }
       }
 
-      // If user had no existing progress in either local or remote, initialize current state to their storage
+      // If user had no existing remote progress, initialize current state to their storage & cloud
       if (!loadedFromLocal) {
         localStorage.setItem(userKey, JSON.stringify({
           categories,
           checks,
           bonusQualifyingWeeks
         }));
+        saveFirestoreUserData(user.uid, {
+          categories,
+          checks,
+          bonusQualifyingWeeks
+        }).catch(() => {});
       }
 
       if (isSubscribed) {
@@ -162,7 +196,7 @@ export function useCloudSync({
     };
   }, [user?.uid]);
 
-  // Debounced push to Supabase and per-user storage when user modifies state
+  // Debounced push to Firestore, Supabase, and per-user storage when user modifies state
   const pushToCloud = useCallback((
     updatedCategories: Category[],
     updatedChecks: WeeklyChecks,
@@ -196,7 +230,14 @@ export function useCloudSync({
 
     pushTimerRef.current = setTimeout(async () => {
       try {
-        // Upsert to Supabase table
+        // 1. Save to Firebase Firestore (discipline_user_data/{userId})
+        await saveFirestoreUserData(user.uid, {
+          categories: updatedCategories,
+          checks: updatedChecks,
+          bonusQualifyingWeeks: updatedBonus
+        });
+
+        // 2. Upsert to Supabase table if available
         const sb = getSupabase();
         if (sb) {
           try {
@@ -208,7 +249,7 @@ export function useCloudSync({
               updated_at: new Date().toISOString()
             });
           } catch (sbError) {
-            // Non-blocking if table is not provisioned yet
+            // Non-blocking if table is not provisioned
           }
         }
 

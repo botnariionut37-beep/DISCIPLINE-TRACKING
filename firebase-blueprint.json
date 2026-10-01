@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "DisciplineLeaderboardEntry": {
+      "title": "Discipline Leaderboard Entry",
+      "description": "Public snapshot of a warrior's discipline score, rank, and weekly completions on the community leaderboard.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Unique identifier of the user (Firebase Auth UID or local warrior ID)",
+          "maxLength": 128
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name or alias shown on the leaderboard",
+          "maxLength": 64
+        },
+        "customAlias": {
+          "type": "string",
+          "description": "Optional custom alias override",
+          "maxLength": 64
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Profile picture URL or avatar generator string",
+          "maxLength": 512
+        },
+        "rankIndex": {
+          "type": "number",
+          "description": "Numeric rank index (1 for Bronz up to 6 for Grandmaster)"
+        },
+        "rankId": {
+          "type": "string",
+          "description": "Rank identifier string",
+          "maxLength": 32
+        },
+        "rankName": {
+          "type": "string",
+          "description": "Formatted rank title (e.g. Bronz, Argint, Maestru)",
+          "maxLength": 32
+        },
+        "tierCategory": {
+          "type": "string",
+          "description": "Tier categorization (Foundation, Warrior, Elite, Ascended)",
+          "maxLength": 32
+        },
+        "qualifyingWeeks": {
+          "type": "number",
+          "description": "Number of qualifying discipline weeks completed"
+        },
+        "disciplineScore": {
+          "type": "number",
+          "description": "Overall discipline score percentage (0-100)"
+        },
+        "weeklyCompletedChecks": {
+          "type": "number",
+          "description": "Number of completed habit check-ins for the week"
+        },
+        "weeklyTargetChecks": {
+          "type": "number",
+          "description": "Total target check-ins possible for the week"
+        },
+        "topHabits": {
+          "type": "array",
+          "description": "Top active discipline habits and completion percentages"
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Whether the entry is visible on the public community leaderboard"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last progress update",
+          "maxLength": 64
+        }
+      },
+      "required": ["userId", "displayName", "rankIndex", "rankId", "rankName", "disciplineScore", "isPublic"]
+    },
+    "DisciplineUserData": {
+      "title": "Discipline User Data",
+      "description": "Personal habit categories, daily check-ins, and user settings synced per user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "User identifier matching auth.uid",
+          "maxLength": 128
+        },
+        "categories": {
+          "type": "array",
+          "description": "Active habit tracking categories"
+        },
+        "checks": {
+          "type": "object",
+          "description": "Record mapping habit ID and day index to completion state"
+        },
+        "bonusQualifyingWeeks": {
+          "type": "number",
+          "description": "Bonus qualifying weeks completed"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update",
+          "maxLength": 64
+        }
+      },
+      "required": ["userId", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/discipline_leaderboard/{userId}": {
+      "schema": "DisciplineLeaderboardEntry",
+      "description": "Public community discipline leaderboard entries indexed by user ID"
+    },
+    "/discipline_user_data/{userId}": {
+      "schema": "DisciplineUserData",
+      "description": "Private warrior progress, habit categories, and check-ins indexed by user ID"
+    }
+  }
+}

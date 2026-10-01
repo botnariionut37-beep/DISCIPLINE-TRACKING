@@ -11,7 +11,6 @@ import {
   setActiveUniversalSession, 
   appSignIn, 
   appSignUp, 
-  appSignInWithGoogle, 
   appSignOut, 
   appSendPasswordReset,
   appResetPassword,
@@ -27,6 +26,12 @@ import {
   clearSupabaseConfig,
   getStoredSupabaseConfig
 } from '../services/supabase';
+import { 
+  auth as firebaseAuth, 
+  signInWithGooglePopup, 
+  signOutFirebase 
+} from '../services/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { isAdminEmail } from '../utils/admin';
 
 interface AuthContextType {
@@ -67,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.setItem('discipline_all_accounts_purged_flag_v1', 'done');
         }
 
+        // 1. Check Supabase session if configured
         const sb = getSupabase();
         if (sb) {
           const { data } = await sb.auth.getSession();
@@ -91,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // Check active universal session in local storage
+        // 2. Check active universal session in local storage
         const activeLocal = getActiveUniversalSession();
         if (activeLocal && mounted) {
           setUser(activeLocal);
@@ -104,6 +110,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     initSession();
+
+    // Listen to Firebase Auth state changes
+    const unsubscribeFirebase = onAuthStateChanged(firebaseAuth, (fbUser) => {
+      if (!mounted) return;
+      if (fbUser) {
+        const username = fbUser.email ? fbUser.email.split('@')[0] : 'warrior';
+        const appUser: AppAuthUser = {
+          uid: fbUser.uid,
+          email: fbUser.email,
+          displayName: fbUser.displayName || username,
+          username,
+          photoURL: fbUser.photoURL || null,
+          isAdmin: isAdminEmail(fbUser.email || ''),
+          emailVerified: fbUser.emailVerified,
+          provider: 'google',
+          metadata: { creationTime: fbUser.metadata.creationTime }
+        };
+        setUser(appUser);
+        setActiveUniversalSession(appUser);
+      }
+    });
 
     // Listen to Supabase auth state changes if connected
     const sb = getSupabase();
@@ -126,8 +153,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(appUser);
           setActiveUniversalSession(appUser);
         } else if (event === 'SIGNED_OUT' && mounted) {
-          setUser(null);
-          setActiveUniversalSession(null);
+          // Only clear if current user was from Supabase
+          if (user?.provider === 'supabase') {
+            setUser(null);
+            setActiveUniversalSession(null);
+          }
         }
       });
       authListener = data.subscription;
@@ -135,13 +165,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       mounted = false;
+      unsubscribeFirebase();
       if (authListener) authListener.unsubscribe();
     };
   }, []);
 
-  const signInWithGoogle = async (fallbackEmail?: string, fallbackName?: string): Promise<AppAuthUser> => {
-    const loggedUser = await appSignInWithGoogle(fallbackEmail, fallbackName);
-    if (loggedUser) setUser(loggedUser);
+  const signInWithGoogle = async (): Promise<AppAuthUser> => {
+    // Primary Firebase Google Sign-In
+    const loggedUser = await signInWithGooglePopup();
+    if (loggedUser) {
+      setUser(loggedUser);
+      setActiveUniversalSession(loggedUser);
+    }
     return loggedUser;
   };
 
@@ -203,12 +238,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async (): Promise<void> => {
+    await signOutFirebase();
     await appSignOut();
     setUser(null);
   };
 
   const deleteAccount = async (): Promise<void> => {
     if (!user) return;
+    await signOutFirebase();
     await appDeleteAccount(user.uid);
     setUser(null);
   };
