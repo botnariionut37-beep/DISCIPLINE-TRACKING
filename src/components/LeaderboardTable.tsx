@@ -112,9 +112,12 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
             </span>
             <h2 className="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
               <span>Community Arena Leaderboard</span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                <ShieldCheck className="w-3 h-3" />
-                Verified Accounts Only
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                </span>
+                <span>Firebase RTDB Live</span>
               </span>
             </h2>
           </div>
@@ -330,7 +333,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
 
       {/* Main Rankings List */}
       {entries.length > 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-[#0E1118]/80 backdrop-blur-md overflow-hidden shadow-xl">
+        <div id="leaderboard-list" className="rounded-2xl border border-white/10 bg-[#0E1118]/80 backdrop-blur-md overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -510,14 +513,14 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
         </div>
       </div>
       ) : (
-        <div className="rounded-3xl border border-white/10 bg-[#0E1118]/80 p-12 text-center text-slate-400 space-y-4 shadow-xl">
+        <div id="leaderboard-list" className="rounded-3xl border border-white/10 bg-[#0E1118]/80 p-12 text-center text-slate-400 space-y-4 shadow-xl">
           <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 mx-auto flex items-center justify-center">
             <Trophy className="w-8 h-8" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white mb-1">The Arena is Ready</h3>
+            <h3 className="text-base font-bold text-white mb-1">No participants yet</h3>
             <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              All artificial bots have been removed. Sign in or complete your habit checks to claim the #1 spot on the community leaderboard!
+              The Realtime Database leaderboard is live. Sign in with Gmail to log your score and claim the #1 spot!
             </p>
           </div>
           {!currentUserId && onOpenAuth && (
@@ -526,7 +529,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-black font-bold text-xs shadow-lg shadow-emerald-500/20 hover:scale-105 transition-transform cursor-pointer"
             >
               <User className="w-4 h-4" />
-              <span>Sign In & Claim Your Rank</span>
+              <span>Log in with Gmail to Claim Rank</span>
             </button>
           )}
         </div>

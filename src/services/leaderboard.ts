@@ -3,10 +3,16 @@ import {
   subscribeFirestoreLeaderboard, 
   upsertFirestoreLeaderboardEntry, 
   deleteFirestoreLeaderboardEntry,
-  syncLocalEntriesToFirestore 
+  syncLocalEntriesToFirestore,
+  saveUserScoreToLeaderboard,
+  listenToRealtimeLeaderboard,
+  removeUserFromRealtimeLeaderboard,
+  RealtimeLeaderboardItem,
+  renderLeaderboardToElement
 } from './firebase';
 import { Category, DisciplineStats, UserRankProgress } from '../types';
 import { LeaderboardEntry, LeaderboardSettings, CompetitorHabitSummary } from '../types/leaderboard';
+import { RANK_TIERS } from '../utils/ranks';
 
 const SETTINGS_KEY = 'DISCIPLINE_TRACKER_LEADERBOARD_SETTINGS';
 const COMMUNITY_LEADERBOARD_KEY = 'discipline_community_leaderboard';
@@ -80,7 +86,7 @@ export function sortLeaderboardEntries(entries: LeaderboardEntry[]): Leaderboard
 }
 
 /**
- * Publish the user's current progress snapshot to Firestore, Supabase, and synchronized local store
+ * Publish the user's current progress snapshot to Firebase Realtime Database, Firestore, and local store
  */
 export async function publishLeaderboardSnapshot(
   userId: string,
@@ -127,7 +133,7 @@ export async function publishLeaderboardSnapshot(
     updatedAt: new Date().toISOString()
   };
 
-  // 1. Update synchronized community storage immediately for instant UI
+  // 1. Update synchronized community storage immediately for instant UI responsiveness
   const existing = getStoredCommunityEntries();
   const existingIdx = existing.findIndex(e => e.userId === userId);
   if (existingIdx >= 0) {
@@ -137,14 +143,27 @@ export async function publishLeaderboardSnapshot(
   }
   saveCommunityEntries(existing);
 
-  // 2. Real-Time Write to Firebase Firestore (discipline_leaderboard)
+  // 2. Real-Time Write to Firebase Realtime Database (leaderboard/{uid})
+  try {
+    await saveUserScoreToLeaderboard(userId, {
+      displayName: entry.displayName,
+      photoURL: entry.photoURL,
+      score: entry.disciplineScore,
+      rankName: entry.rankName,
+      rankIndex: entry.rankIndex
+    });
+  } catch (rtdbErr) {
+    console.warn('[Firebase RTDB Leaderboard] Write notice:', rtdbErr);
+  }
+
+  // 3. Real-Time Write to Firebase Firestore (discipline_leaderboard)
   try {
     await upsertFirestoreLeaderboardEntry(entry);
   } catch (fbErr) {
-    console.warn('[Firebase Leaderboard] Upsert notice:', fbErr);
+    console.warn('[Firebase Firestore Leaderboard] Upsert notice:', fbErr);
   }
 
-  // 3. Upsert to Supabase if connected
+  // 4. Upsert to Supabase if connected
   const sb = getSupabase();
   if (sb) {
     try {
@@ -172,26 +191,36 @@ export async function publishLeaderboardSnapshot(
 }
 
 /**
- * Subscribe to real-time synchronized leaderboard updates across Firestore, local storage, and Supabase
+ * Subscribe to real-time synchronized leaderboard updates across Realtime Database, Firestore, and local store
  */
 export function subscribeToLeaderboard(
   currentUserId: string | null,
   onUpdate: (entries: LeaderboardEntry[]) => void
 ): () => void {
   let isMounted = true;
+  let remoteRTDBEntries: LeaderboardEntry[] = [];
+  let rawRTDBParticipants: RealtimeLeaderboardItem[] = [];
   let remoteFirestoreEntries: LeaderboardEntry[] = [];
 
   const broadcastCombined = () => {
     if (!isMounted) return;
     const localEntries = getStoredCommunityEntries();
     
-    // Merge Firestore entries with local entries (Firestore takes precedence for freshness)
+    // Merge: Realtime Database takes precedence for real-time scores
     const map = new Map<string, LeaderboardEntry>();
+
+    // 1. Local baseline
     localEntries
       .filter(e => e.userId && !e.userId.startsWith('seed-warrior-'))
       .forEach(e => map.set(e.userId, e));
 
+    // 2. Firestore entries
     remoteFirestoreEntries
+      .filter(e => e.userId && !e.userId.startsWith('seed-warrior-'))
+      .forEach(e => map.set(e.userId, e));
+
+    // 3. Realtime Database entries (authoritative live source)
+    remoteRTDBEntries
       .filter(e => e.userId && !e.userId.startsWith('seed-warrior-'))
       .forEach(e => map.set(e.userId, e));
 
@@ -204,9 +233,23 @@ export function subscribeToLeaderboard(
     
     const sorted = sortLeaderboardEntries(visible);
     onUpdate(sorted);
+
+    // Render directly to element with id="leaderboard-list" if present in the DOM
+    if (typeof document !== 'undefined') {
+      const activeListItems: RealtimeLeaderboardItem[] = sorted.map(s => ({
+        uid: s.userId,
+        displayName: s.displayName,
+        photoURL: s.photoURL,
+        score: s.disciplineScore,
+        rankName: s.rankName,
+        rankIndex: s.rankIndex,
+        updatedAt: s.updatedAt
+      }));
+      renderLeaderboardToElement('leaderboard-list', activeListItems);
+    }
   };
 
-  // Sync existing local community entries to Firestore on first load so no entries are lost
+  // Sync existing local community entries to Firestore on first load
   const initialLocal = getStoredCommunityEntries();
   if (initialLocal.length > 0) {
     syncLocalEntriesToFirestore(initialLocal).catch(() => {});
@@ -215,18 +258,52 @@ export function subscribeToLeaderboard(
   // Initial broadcast from local cache
   broadcastCombined();
 
-  // 1. Subscribe to real-time Firestore collection updates
+  // 1. Subscribe to Firebase Realtime Database onValue (live leaderboard/{uid})
+  const unsubscribeRTDB = listenToRealtimeLeaderboard(
+    (participants) => {
+      rawRTDBParticipants = participants;
+      remoteRTDBEntries = participants.map(p => {
+        const rankMeta = RANK_TIERS.find(
+          r => r.name.toLowerCase() === (p.rankName || '').toLowerCase() || r.index === p.rankIndex
+        ) || RANK_TIERS[0];
+
+        return {
+          userId: p.uid,
+          displayName: p.displayName,
+          customAlias: null,
+          photoURL: p.photoURL,
+          rankIndex: rankMeta.index,
+          rankId: rankMeta.id,
+          rankName: rankMeta.name,
+          tierCategory: rankMeta.tierCategory,
+          qualifyingWeeks: 0,
+          disciplineScore: p.score,
+          weeklyCompletedChecks: Math.round((p.score / 100) * 35),
+          weeklyTargetChecks: 35,
+          topHabits: [],
+          isPublic: true,
+          updatedAt: p.updatedAt
+        };
+      });
+      broadcastCombined();
+    },
+    (err) => {
+      console.warn('[Firebase RTDB] Subscription notice:', err);
+    }
+  );
+
+  // 2. Subscribe to Firestore collection updates
   const unsubscribeFirestore = subscribeFirestoreLeaderboard(
     (firestoreEntries) => {
       remoteFirestoreEntries = firestoreEntries;
       broadcastCombined();
     },
     (err) => {
-      console.warn('[Firebase Leaderboard] Snapshot fallback to polling:', err);
+      console.warn('[Firebase Firestore] Subscription notice:', err);
     }
   );
 
-  // 2. Fallback query for Supabase if connected
+  // 3. Fallback query for Supabase if connected
   const refreshSupabase = async () => {
     const sb = getSupabase();
     if (sb) {
@@ -268,7 +345,6 @@ export function subscribeToLeaderboard(
     }
   };
 
-  // Initial Supabase check
   refreshSupabase();
 
   // Listen for local tab and cross-window events
@@ -281,6 +357,7 @@ export function subscribeToLeaderboard(
 
   return () => {
     isMounted = false;
+    unsubscribeRTDB();
     unsubscribeFirestore();
     window.removeEventListener(LEADERBOARD_EVENT, handleUpdate);
     window.removeEventListener('storage', handleUpdate);
@@ -288,7 +365,7 @@ export function subscribeToLeaderboard(
 }
 
 /**
- * Completely removes an entry from Firestore, local community store, and Supabase
+ * Completely removes an entry from Realtime Database, Firestore, and local community store
  */
 export async function removeLeaderboardEntry(userId: string): Promise<void> {
   if (!userId) return;
@@ -298,14 +375,21 @@ export async function removeLeaderboardEntry(userId: string): Promise<void> {
   const filtered = existing.filter(e => e.userId !== userId);
   saveCommunityEntries(filtered);
 
-  // 2. Remove from Firebase Firestore
+  // 2. Remove from Firebase Realtime Database
+  try {
+    await removeUserFromRealtimeLeaderboard(userId);
+  } catch (e) {
+    console.warn('[Firebase RTDB] Delete error:', e);
+  }
+
+  // 3. Remove from Firebase Firestore
   try {
     await deleteFirestoreLeaderboardEntry(userId);
   } catch (e) {
-    console.warn('[Firebase Leaderboard] Delete error:', e);
+    console.warn('[Firebase Firestore] Delete error:', e);
   }
 
-  // 3. Remove from Supabase if connected
+  // 4. Remove from Supabase if connected
   const sb = getSupabase();
   if (sb) {
     try {

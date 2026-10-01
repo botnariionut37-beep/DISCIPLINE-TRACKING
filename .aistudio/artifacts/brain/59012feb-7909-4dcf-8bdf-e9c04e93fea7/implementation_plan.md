@@ -1,57 +1,52 @@
-# Firebase Authentication & Real-Time Firestore Leaderboard Integration
+# Firebase Realtime Database Live Leaderboard Integration
 
-Integrate Google/Gmail authentication using Firebase Auth and enable real-time Firestore synchronization for `discipline_leaderboard` and personal warrior habit data using the user's configured Firebase project (`discipline-90780`).
+Implement a real-time live community leaderboard using Firebase Realtime Database (`discipline-90780-default-rtdb.firebaseio.com`) and Google Authentication, writing to and reading from `leaderboard/{uid}` using `set` and `onValue`.
 
 ---
 
 ### User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following architectural and user experience decisions were confirmed during clarification:
+> The following decisions were confirmed based on your Realtime Database security rules (`auth != null && auth.uid === $uid`):
 >
-> - **Google / Gmail Authentication Placement**: An official "Continue with Google" / "Log in with Gmail" button will be placed inside the warrior authentication modal, prominently positioned above email/password fields with clean separator typography.
-> - **Leaderboard Data Migration & Sync**: Existing local community records will be gracefully migrated and synced to the Firestore `discipline_leaderboard` collection on initial connection, ensuring zero historical rank progress is lost.
-> - **Habit Progress Synchronization**: In addition to public leaderboard entries, personal habit categories, check-ins, and user settings will be synchronized in real-time under a dedicated user document (`discipline_user_data/{userId}`) in Firestore.
+> - **Guest Access**: Guest users must sign in with Google or email to publish their scores to the public Realtime Database leaderboard. Unauthenticated guests can view the live leaderboard in real time without restriction (matching the `.read: true` rule).
+> - **Stored Payload Schema**: Each participant document under `leaderboard/{uid}` will store `displayName`, `photoURL`, `score`, `rankName`, and `updatedAt`.
+> - **Live Realtime Updates**: We will use Firebase SDK's `onValue` listener on `leaderboard` to sort participants in descending order by score and update the UI in real time without refreshing.
 
 ---
 
 ### 1. Overview & Core Concept
 
-- **What It Does**: Enables users to sign in with their Google/Gmail accounts using Firebase Auth popup flow, automatically populating their avatar, display name, and verified email. In addition, all leaderboard scores, rank tiers, and personal habit completions are read and written to Cloud Firestore in real time using reactive listeners (`onSnapshot`).
-- **Target Audience / Persona**: Warriors and habit builders tracking daily discipline, seeking real-time competition on the community leaderboard with cross-device synchronization and effortless Gmail authentication.
-- **Key Value**: Instant, zero-friction authentication; real-time competitive presence without manual refreshes; persistent cross-device progress.
+- **What It Does**:
+  - Connects to Firebase Realtime Database at `https://discipline-90780-default-rtdb.firebaseio.com` using the project's initialized Firebase credentials.
+  - Exposes `saveUserScoreToLeaderboard(uid, { displayName, photoURL, score, rankName })` which writes or updates `leaderboard/{uid}` via `set(ref(rtdb, 'leaderboard/' + uid), data)`.
+  - Exposes `listenToRealtimeLeaderboard(callback)` using `onValue(ref(rtdb, 'leaderboard'), ...)` to receive instantaneous updates whenever any participant's score changes.
+  - Displays participants sorted in descending order by score, showing rank, avatar photo, name, rank tier, and points. If the collection is empty, displays *"No participants yet"*.
+- **Target Audience**: All warriors and users of the discipline application competing on the global real-time leaderboard.
 
 ---
 
 ### 2. User Experience & Visual Design
 
-- **Key User Flows**:
-  1. *Authentication Flow*: User clicks "Sign In" in the navigation bar -> Modal displays a prominent "Continue with Google" button alongside existing credentials -> Clicking opens the Firebase Google popup -> On success, user profile (Google photo, display name, email) is immediately synced, and the modal closes with a congratulatory toast.
-  2. *Real-Time Leaderboard Flow*: The leaderboard table and podium subscribe to Firestore's `discipline_leaderboard` collection in real time. Whenever any user logs progress or changes rank, the leaderboard updates instantly with zero page reloads.
-  3. *Snapshot Publishing Flow*: When a warrior marks a daily check-in or rank changes, a debounced snapshot is written to `discipline_leaderboard/{userId}`, immediately propagating to all peers.
-- **Visual Identity & Theme**:
-  - *Aesthetic Direction*: Dark Stoic Warrior theme (`#0C0E12` deep neutral canvas, emerald `#10B981` discipline accent, slate structural borders).
-  - *Google Sign-In Button*: Crisp white/neutral elevated surface with authentic Google quad-color 'G' icon, clear font hierarchy (`font-sans font-semibold`), 44px touch target, and smooth active press state (`active:scale-[0.99]`).
-  - *Zero-Pill Compliance*: Metadata (ranks, scores, percentages) displayed as clean unboxed typographic elements with `·` separators and tabular figures (`tabular-nums`).
-- **Interactive Feedback & Motion**:
-  - Loading spinner indicator on Google auth initiation.
-  - Animated live indicators on leaderboard entries when updated via Firestore snapshot.
-  - Graceful offline fallback to local storage cache if network drops.
+- **Leaderboard View & Real-Time Sync**:
+  - The leaderboard table and podium seamlessly subscribe to Firebase Realtime Database `onValue`.
+  - Includes standard DOM anchor `id="leaderboard-list"` for complete compliance with your prompt specification.
+  - Active visual indicator ("Live Realtime Database Connected") displaying real-time synchronization state.
+  - Empty state: When no competitors exist in the database, displays a clean Stoic banner: *"No participants yet. Complete your first habit to claim the #1 spot!"*
+- **Sign-in Prompt for Publishing**:
+  - When an unauthenticated user views their progress, an unobtrusive banner encourages them: *"Sign in with Gmail to publish your score to the global live leaderboard"*.
+  - Clicking opens the Google sign-in popup, which instantly authenticates and pushes their score to `leaderboard/{uid}`.
 
 ---
 
 ### 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Firebase Auth Popup Flow (`signInWithPopup`)**
-  - *Chosen Approach*: `signInWithPopup(auth, googleProvider)` with graceful error catching.
-  - *Why*: Provides the best UX inside modern web applications and avoids redirect URL mismatches that can break inside iframe or sandbox environments.
-  - *Alternatives Considered*: `signInWithRedirect` (often blocked or loses state in sandboxed environments).
-- **Decision 2: Firestore Document ID Scheme**
-  - *Chosen Approach*: Document ID in `discipline_leaderboard` matches the user's Auth `uid` (`discipline_leaderboard/${userId}`).
-  - *Why*: Guarantees idempotency (one entry per warrior), prevents duplicate entries, and enables strict attribute-based security rules where `request.auth.uid == userId`.
-- **Decision 3: Dual-Layer Persistence (Firestore Realtime + Local Fallback)**
-  - *Chosen Approach*: Primary reads/writes go through Firestore reactive subscriptions (`onSnapshot`), with local storage maintained as an immediate synchronous cache.
-  - *Why*: Ensures instant UI responsiveness and allows uninterrupted habit tracking even during brief offline moments.
+- **Decision 1: Firebase Realtime Database (`firebase/database`) alongside Auth**
+  - *Chosen Approach*: Initialize `getDatabase(app, "https://discipline-90780-default-rtdb.firebaseio.com")`.
+  - *Why*: Directly aligns with your database URL and security rules configured in Firebase console.
+- **Decision 2: Sorting Strategy**
+  - *Chosen Approach*: Client-side descending sort on the received snapshot: `entries.sort((a, b) => b.score - a.score)`.
+  - *Why*: Realtime Database stores keys by UID; sorting client-side guarantees instantaneous updates with complete control over tied scores and tie-breaking.
 
 ---
 
@@ -61,64 +56,40 @@ Integrate Google/Gmail authentication using Firebase Auth and enable real-time F
 ┌────────────────────────────────────────────────────────┐
 │                   React Application                    │
 │                                                        │
-│  ┌────────────────────┐      ┌──────────────────────┐  │
-│  │    AuthContext     │      │   Leaderboard Hook   │  │
-│  │  (Firebase Auth)   │      │ (onSnapshot Listener)│  │
-│  └─────────┬──────────┘      └──────────┬───────────┘  │
-└────────────┼────────────────────────────┼──────────────┘
-             │                            │
-             ▼                            ▼
+│  ┌─────────────────────────┐  ┌─────────────────────┐  │
+│  │     AuthContext         │  │  LeaderboardTable   │  │
+│  │  (Google Auth via RTDB) │  │ (id="leaderboard-   │  │
+│  │                         │  │       list")        │  │
+│  └───────────┬─────────────┘  └──────────┬──────────┘  │
+└──────────────┼───────────────────────────┼─────────────┘
+               │                           │
+               ▼                           ▼
 ┌────────────────────────────────────────────────────────┐
-│                   Firebase SDK 11.x                    │
+│             Firebase Realtime Database                 │
+│    (https://discipline-90780-default-rtdb...)          │
 │                                                        │
-│   • initializeApp(firebaseConfig: discipline-90780)    │
-│   • GoogleAuthProvider + signInWithPopup               │
-│   • onAuthStateChanged observer                        │
-│   • getFirestore(app)                                  │
-└────────────┬────────────────────────────┬──────────────┘
-             │                            │
-             ▼                            ▼
-┌────────────────────────┐    ┌──────────────────────────┐
-│     Firebase Auth      │    │     Cloud Firestore      │
-│  (Google / Gmail SSO)  │    │                          │
-│                        │    │  discipline_leaderboard/ │
-│  • UID, Email, Photo   │    │    └── {userId} (Entry)  │
-│  • Token & Session     │    │                          │
-│                        │    │  discipline_user_data/   │
-│                        │    │    └── {userId} (Habits) │
-└────────────────────────┘    └──────────────────────────┘
+│  • Write: set(ref(db, 'leaderboard/' + uid), entry)    │
+│  • Read:  onValue(ref(db, 'leaderboard'), snapshot)   │
+└────────────────────────────────────────────────────────┘
 ```
 
-#### Data Model
+#### Data Schema (`leaderboard/{uid}`)
+```json
+{
+  "displayName": "Marcus Aurelius",
+  "photoURL": "https://lh3.googleusercontent.com/...",
+  "score": 85,
+  "rankName": "Argint",
+  "updatedAt": "2026-10-01T11:18:00.000Z"
+}
+```
 
-1. **Collection `discipline_leaderboard`**:
-   - Document ID: `userId` (string)
-   - Fields:
-     - `userId`: `string`
-     - `displayName`: `string`
-     - `customAlias`: `string | null`
-     - `photoURL`: `string | null`
-     - `rankIndex`: `number` (1..6)
-     - `rankId`: `string` ('bronz', 'argint', etc.)
-     - `rankName`: `string`
-     - `tierCategory`: `string`
-     - `qualifyingWeeks`: `number`
-     - `disciplineScore`: `number` (0..100)
-     - `weeklyCompletedChecks`: `number`
-     - `weeklyTargetChecks`: `number`
-     - `topHabits`: `Array<{ id, name, icon, color, completed, total, rate }>`
-     - `isPublic`: `boolean`
-     - `updatedAt`: `string` (ISO timestamp)
-
-2. **Collection `discipline_user_data`**:
-   - Document ID: `userId` (string)
-   - Fields:
-     - `categories`: `Category[]`
-     - `checkIns`: `Record<string, boolean>`
-     - `settings`: `LeaderboardSettings`
-     - `lastSyncedAt`: `string`
-
-#### Security Blueprint & Rules (`firestore.rules`)
-- Read access to `discipline_leaderboard`: Public for documents where `isPublic == true`, or owner where `request.auth.uid == userId`.
-- Write/Update access to `discipline_leaderboard`: Only authenticated owner where `request.auth.uid == userId` and fields match the validated schema.
-- Read/Write to `discipline_user_data/{userId}`: Restricted to the authenticated owner (`request.auth.uid == userId`).
+#### Functions to Implement in `src/services/firebase.ts`:
+1. `saveUserScoreToLeaderboard(uid, data)`:
+   - Uses `set(ref(db, `leaderboard/${uid}`), data)`
+2. `listenToRealtimeLeaderboard(onUpdate, onError)`:
+   - Uses `onValue(ref(db, 'leaderboard'), callback)`
+   - Parses snapshot children, maps to array, sorts `b.score - a.score`
+   - Returns unsubscribe function (`off` or return value)
+3. Integration in `src/services/leaderboard.ts`:
+   - Bridges the Realtime Database listener with the app's existing podium and table components.
