@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import React, { useState } from 'react';
 import { Category, DayOfWeek, DAYS_OF_WEEK } from '../types';
 import * as LucideIcons from 'lucide-react';
-import { Check, Edit3, Sparkles, Lock, ShieldCheck } from 'lucide-react';
+import { Check, Edit3, Sparkles, Lock, ShieldCheck, LayoutGrid, Calendar, CheckCircle2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getDayDates, getWeekKey } from '../utils/date';
 import { chime } from '../utils/audio';
@@ -31,6 +32,10 @@ export default function WeeklyGrid({
   const dayDates = getDayDates(weekKey);
   const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' }) as DayOfWeek;
   const currentWeekKey = getWeekKey(new Date());
+
+  // Mobile-exclusive day focus and view layout states
+  const [selectedMobileDay, setSelectedMobileDay] = useState<DayOfWeek>(todayName);
+  const [mobileViewMode, setMobileViewMode] = useState<'cards' | 'grid'>('cards');
 
   const renderIcon = (iconName: string, className: string) => {
     const IconComponent = (LucideIcons as any)[iconName] || LucideIcons.Activity;
@@ -173,76 +178,263 @@ export default function WeeklyGrid({
         </div>
       </div>
 
+      {/* Mobile-Exclusive View Controls */}
+      <div className="flex sm:hidden items-center justify-between gap-2 mb-4 pb-2 border-b border-white/5">
+        <div className="flex items-center gap-1 p-0.5 bg-white/5 rounded-xl border border-white/10 text-xs font-sans">
+          <button
+            type="button"
+            onClick={() => setMobileViewMode('cards')}
+            className={`px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+              mobileViewMode === 'cards'
+                ? 'bg-emerald-500 text-white font-bold shadow-sm'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Calendar size={12} />
+            <span>Day View</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileViewMode('grid')}
+            className={`px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+              mobileViewMode === 'grid'
+                ? 'bg-emerald-500 text-white font-bold shadow-sm'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <LayoutGrid size={12} />
+            <span>Full Grid</span>
+          </button>
+        </div>
+
+        <span className="text-[10px] font-mono text-gray-400 tracking-wide uppercase">
+          {selectedMobileDay.slice(0, 3)} Focus
+        </span>
+      </div>
+
       {categories.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-white/10 rounded-2xl bg-white/[0.01]">
           <p className="text-gray-400 font-sans font-semibold text-sm">Create categories to begin tracking discipline.</p>
           <p className="text-gray-500 text-xs mt-1">Select "Add Custom Category" below to list daily goals.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto -mx-6 px-6">
-          <div className="min-w-[700px]">
-            {/* Grid Columns Definition */}
-            {/* 1 Row for Headers */}
-            <div className="grid grid-cols-10 gap-2 items-center text-center pb-3 border-b border-white/5">
-              {/* Habits Column occupies 3 parts */}
-              <div className="col-span-3 text-left pl-2">
-                <span className="text-gray-500 font-mono text-[10px] uppercase tracking-[0.2em] font-medium">
-                  Discipline Category
-                </span>
+        <>
+          {/* MOBILE CARDS VIEW (block sm:hidden when mobileViewMode === 'cards') */}
+          {mobileViewMode === 'cards' && (
+            <div className="block sm:hidden space-y-4">
+              {/* Mobile Day Selector Bar */}
+              <div className="grid grid-cols-7 gap-1 p-1 bg-[#090B0E] rounded-2xl border border-white/5">
+                {dayDates.map(({ dayName, dateNum }) => {
+                  const isToday = dayName === todayName && weekKey === currentWeekKey;
+                  const isSelected = dayName === selectedMobileDay;
+                  
+                  // Compute completed checks on this day
+                  let dayCompleted = 0;
+                  categories.forEach(cat => {
+                    if ((checks[cat.id] || {})[dayName]) dayCompleted++;
+                  });
+                  const isAllDone = categories.length > 0 && dayCompleted === categories.length;
+
+                  return (
+                    <button
+                      key={dayName}
+                      type="button"
+                      onClick={() => setSelectedMobileDay(dayName)}
+                      className={`flex flex-col items-center py-2 px-0.5 rounded-xl transition-all cursor-pointer relative ${
+                        isSelected
+                          ? 'bg-emerald-500/20 text-white border border-emerald-500/40 shadow-sm'
+                          : 'text-gray-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      {isToday && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mb-0.5" />
+                      )}
+                      <span className="text-[10px] font-mono uppercase font-bold tracking-tight">
+                        {dayName.slice(0, 1)}
+                      </span>
+                      <span className={`text-xs font-mono font-bold mt-0.5 ${isSelected ? 'text-emerald-400' : 'text-gray-300'}`}>
+                        {dateNum}
+                      </span>
+                      <span className={`text-[9px] font-mono mt-1 ${isAllDone ? 'text-emerald-400 font-bold' : 'text-gray-500'}`}>
+                        {dayCompleted}/{categories.length}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* Day of the week columns: occupy 1 part each (total 7) */}
-              {dayDates.map(({ dayName, dateNum }) => {
-                const isToday = dayName === todayName && weekKey === currentWeekKey;
-                return (
-                  <div key={dayName} className="col-span-1 flex flex-col items-center py-1.5 rounded-xl">
-                    <span className={`text-[10px] font-mono uppercase tracking-[0.2em] font-semibold ${
-                      isToday ? 'text-white font-bold' : 'text-gray-500'
-                    }`}>
-                      {dayName.slice(0, 3)}
-                    </span>
-                    <span className={`w-6 h-6 flex items-center justify-center text-xs font-mono mt-1 rounded-full ${
-                      isToday 
-                        ? 'bg-emerald-500 text-white font-bold shadow-xs scale-102' 
-                        : 'text-gray-400 hover:text-white transition-colors'
-                    }`}>
-                      {dateNum}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+              {/* Mobile Habit Cards List for selectedMobileDay */}
+              <div className="space-y-3">
+                {categories.map((cat) => {
+                  const colors = colorMap[cat.color] || colorMap.indigo;
+                  const catChecks = checks[cat.id] || {};
+                  const isChecked = !!catChecks[selectedMobileDay];
+                  const isToday = selectedMobileDay === todayName && weekKey === currentWeekKey;
+                  const canToggle = isAdmin || isToday;
+                  const completedWeekCount = DAYS_OF_WEEK.filter(d => catChecks[d]).length;
 
-            {/* Habit Grid Rows */}
-            <div className="divide-y divide-white/5">
-              {categories.map((cat) => {
-                const colors = colorMap[cat.color] || colorMap.indigo;
-                const catChecks = checks[cat.id] || {};
-                
-                // Calculate success metrics
-                const completedCount = DAYS_OF_WEEK.filter(d => catChecks[d]).length;
-                const percentage = Math.round((completedCount / 7) * 100);
-
-                return (
-                  <div key={cat.id} className="grid grid-cols-10 gap-2 items-center py-4 group animate-fade-in" id={`grid-row-${cat.id}`}>
-                    {/* Habit Info Column */}
-                    <div className="col-span-3 flex items-center justify-between pr-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className={`p-2 rounded-xl shrink-0 ${colors.lightBg} ${colors.text} border ${colors.border}`}>
-                          {renderIcon(cat.icon, "w-4 h-4")}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-sans font-medium text-white group-hover:text-emerald-400 transition-colors truncate">
-                            {cat.name}
-                          </p>
-                          <p className="text-[10px] font-mono text-gray-500 uppercase tracking-widest mt-0.5">
-                            {completedCount}/7 Days ({percentage}%)
-                          </p>
+                  return (
+                    <div 
+                      key={cat.id} 
+                      className={`p-4 rounded-2xl border transition-all duration-200 ${
+                        isChecked 
+                          ? 'bg-emerald-950/15 border-emerald-500/30' 
+                          : 'bg-[#10131B] border-white/5'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className={`p-2 rounded-xl shrink-0 ${colors.lightBg} ${colors.text} border ${colors.border}`}>
+                            {renderIcon(cat.icon, "w-4 h-4")}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-sm font-sans font-bold text-white truncate">
+                              {cat.name}
+                            </p>
+                            <p className="text-[10px] font-mono text-gray-400">
+                              {completedWeekCount}/7 Days Completed this week
+                            </p>
+                          </div>
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={() => onEditCategoryTrigger(cat)}
+                          className="p-2 rounded-xl text-gray-500 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                          title="Edit habit"
+                        >
+                          <Edit3 size={13} />
+                        </button>
                       </div>
 
+                      {/* 7-Day Mini Dots Trail */}
+                      <div className="flex items-center justify-between gap-1 py-1.5 px-2 mb-3 bg-black/30 rounded-xl border border-white/5">
+                        {DAYS_OF_WEEK.map((d) => {
+                          const done = !!catChecks[d];
+                          const isCur = d === selectedMobileDay;
+                          return (
+                            <div 
+                              key={d}
+                              className={`flex flex-col items-center flex-1 py-0.5 rounded-lg ${
+                                isCur ? 'bg-white/10' : ''
+                              }`}
+                            >
+                              <span className="text-[9px] font-mono text-gray-500">{d.slice(0, 1)}</span>
+                              <span className={`w-2 h-2 rounded-full mt-1 ${
+                                done ? 'bg-emerald-400' : 'bg-white/10'
+                              }`} />
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Touch-Friendly Action Button (min 48px height) */}
                       <button
-                        onClick={() => onEditCategoryTrigger(cat)}
+                        type="button"
+                        onClick={() => {
+                          if (!canToggle) return;
+                          handleToggleWrapper(cat.id, selectedMobileDay, isChecked);
+                        }}
+                        disabled={!canToggle}
+                        className={`w-full min-h-[48px] py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 font-sans text-xs font-bold transition-all cursor-pointer ${
+                          !canToggle
+                            ? 'bg-white/5 text-gray-500 border border-white/5 cursor-not-allowed'
+                            : isChecked
+                            ? `${colors.bg} text-white shadow-lg shadow-emerald-500/20`
+                            : 'bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10'
+                        }`}
+                      >
+                        {isChecked ? (
+                          <>
+                            <Check size={16} className="stroke-[3]" />
+                            <span>Completed for {selectedMobileDay}</span>
+                          </>
+                        ) : !canToggle ? (
+                          <>
+                            <Lock size={13} className="text-gray-500" />
+                            <span>Locked ({selectedMobileDay})</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 size={16} className="text-gray-400" />
+                            <span>Tap to Complete for {selectedMobileDay}</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* DESKTOP / TABLE GRID VIEW */}
+          <div className={`overflow-x-auto -mx-6 px-6 ${
+            mobileViewMode === 'cards' ? 'hidden sm:block' : 'block'
+          }`}>
+            <div className="min-w-[700px]">
+              {/* Grid Columns Definition */}
+              {/* 1 Row for Headers */}
+              <div className="grid grid-cols-10 gap-2 items-center text-center pb-3 border-b border-white/5">
+                {/* Habits Column occupies 3 parts */}
+                <div className="col-span-3 text-left pl-2">
+                  <span className="text-gray-500 font-mono text-[10px] uppercase tracking-[0.2em] font-medium">
+                    Discipline Category
+                  </span>
+                </div>
+
+                {/* Day of the week columns: occupy 1 part each (total 7) */}
+                {dayDates.map(({ dayName, dateNum }) => {
+                  const isToday = dayName === todayName && weekKey === currentWeekKey;
+                  return (
+                    <div key={dayName} className="col-span-1 flex flex-col items-center py-1.5 rounded-xl">
+                      <span className={`text-[10px] font-mono uppercase tracking-[0.2em] font-semibold ${
+                        isToday ? 'text-white font-bold' : 'text-gray-500'
+                      }`}>
+                        {dayName.slice(0, 3)}
+                      </span>
+                      <span className={`w-6 h-6 flex items-center justify-center text-xs font-mono mt-1 rounded-full ${
+                        isToday 
+                          ? 'bg-emerald-500 text-white font-bold shadow-xs scale-102' 
+                          : 'text-gray-400 hover:text-white transition-colors'
+                      }`}>
+                        {dateNum}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Habit Grid Rows */}
+              <div className="divide-y divide-white/5">
+                {categories.map((cat) => {
+                  const colors = colorMap[cat.color] || colorMap.indigo;
+                  const catChecks = checks[cat.id] || {};
+                  
+                  // Calculate success metrics
+                  const completedCount = DAYS_OF_WEEK.filter(d => catChecks[d]).length;
+                  const percentage = Math.round((completedCount / 7) * 100);
+
+                  return (
+                    <div key={cat.id} className="grid grid-cols-10 gap-2 items-center py-4 group animate-fade-in" id={`grid-row-${cat.id}`}>
+                      {/* Habit Info Column */}
+                      <div className="col-span-3 flex items-center justify-between pr-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className={`p-2 rounded-xl shrink-0 ${colors.lightBg} ${colors.text} border ${colors.border}`}>
+                            {renderIcon(cat.icon, "w-4 h-4")}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-sm font-sans font-medium text-white group-hover:text-emerald-400 transition-colors truncate">
+                              {cat.name}
+                            </p>
+                            <p className="text-[10px] font-mono text-gray-500 uppercase tracking-widest mt-0.5">
+                              {completedCount}/7 Days ({percentage}%)
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => onEditCategoryTrigger(cat)}
                         className="opacity-0 group-hover:opacity-100 focus:opacity-100 p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
                         title="Modify habits"
                       >
@@ -311,7 +503,8 @@ export default function WeeklyGrid({
             </div>
           </div>
         </div>
-      )}
-    </div>
-  );
+      </>
+    )}
+  </div>
+);
 }

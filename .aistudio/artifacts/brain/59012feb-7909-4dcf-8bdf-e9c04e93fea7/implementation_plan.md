@@ -1,81 +1,62 @@
-# Email-Verified Account Deletion & Complete Purge Plan
+# Mobile-Exclusive Aesthetic Optimization Plan
 
-Implement a secure, multi-tier account deletion workflow that requires confirmation via the user's Gmail before permanently purging their data from Firebase Realtime Database (`leaderboard/{uid}`), Firestore, Firebase Auth, and local cache.
+Refine the application layout, typography, and interaction patterns exclusively for mobile devices (`< 640px` viewport), while maintaining the exact desktop and tablet experience untouched.
 
 ---
 
-### User Review & Confirmed Requirements
+### Key Requirements & Constraints
 
 > [!IMPORTANT]
-> The following specifications were confirmed:
-> - **Recipient**: Confirmation email notification is sent to the user's registered Gmail address.
-> - **Confirmation Step**: Account deletion requires email verification (via a 6-digit code or direct confirmation link) before the purge executes.
-> - **Purge Scope**: Complete deletion across all stores:
->   1. **Firebase Realtime Database**: `leaderboard/{uid}`
->   2. **Firebase Firestore**: `discipline_leaderboard/{uid}` and `discipline_user_data/{uid}`
->   3. **Firebase Auth**: User account removal / revocation
->   4. **Local Cache & Storage**: Active session, local community cache, and personal habit history
+> - **Mobile Only**: All layout alterations are scoped to mobile viewports via responsive Tailwind breakpoints (`block sm:hidden`, `flex sm:hidden`, `max-sm:`, or `sm:hidden`). Desktop and tablet layouts remain completely intact.
+> - **Touch Accessibility**: Every interactive control on mobile has $\ge 44\text{px}$ touch targets to eliminate accidental taps.
+> - **No Horizontal Overflow**: Eradicate horizontal scrolling issues on phones; deliver a tailored mobile card & day-focus interface.
+> - **Domain-Native Dark Aesthetic**: Deep obsidian backgrounds (`#0A0D14`), polished glassmorphism, crisp typography, and restrained borders.
 
 ---
 
-### 1. User Experience & Flow
+### 1. Proposed Mobile Experience & Components
 
-1. **Initiate Deletion in Settings/Profile**:
-   - In the Profile/Account settings modal, an "Account Actions" section provides a red button: *"Delete Account & Purge Data"*.
-   - A warning dialog explains: *"To protect your account, we will send a 6-digit confirmation code and a verification link to your Gmail."*
-2. **Gmail Notification & Verification Code**:
-   - The system generates a cryptographic 6-digit verification code with an expiration timer (15 minutes).
-   - An Express backend route `/api/send-deletion-verification` dispatches the email notification to the user's Gmail.
-   - For rapid preview testing, a high-fidelity in-app notification prompt appears with an *"Open in Gmail / Preview Email"* drawer displaying the formatted deletion email, the 6-digit code, and a one-click confirmation link.
-3. **Confirmation & Real-Time Purge**:
-   - The user enters the 6-digit code or clicks the email link.
-   - Upon confirmation, a background sequence executes:
-     - `remove(ref(rtdb, 'leaderboard/' + uid))` removes the competitor from the live Realtime Database leaderboard instantly. All open screens see them disappear immediately via `onValue`.
-     - `deleteDoc(doc(db, 'discipline_leaderboard', uid))` and `deleteDoc(doc(db, 'discipline_user_data', uid))` remove all Firestore records.
-     - `deleteUser(auth.currentUser)` removes the authentication credentials.
-     - Local storage keys (`discipline_community_leaderboard`, `discipline_user_auth`, habit checks) are wiped.
-   - A farewell screen confirms: *"Your account and leaderboard records have been permanently erased."*
+#### A. Mobile Bottom Navigation Dock (`block sm:hidden`)
+- A glassmorphic navigation bar pinned to the bottom of the viewport with safe-area padding:
+  - **Habits**: Switches to the active routine tracker
+  - **Arena**: Opens the live Realtime Database leaderboard
+  - **Rank Ladder**: Quick drawer/modal trigger to review discipline tier progression
+  - **Analytics**: Smooth scroll / tab to discipline breakdown metrics
+  - **Profile / Actions**: One-tap access to settings & user profile
 
----
+#### B. Mobile Habit Check Cards with Day Selector
+- In `WeeklyGrid.tsx`:
+  - **Mobile Day Selector Pill Strip**: Horizontal scrollable day pill bar (`Mon` through `Sun`) with "Today" highlighted and daily completion rates.
+  - **Aesthetic Habit Card Stack**: On mobile, habits render as full-width sleek cards featuring:
+    - Habit icon + color accent glow
+    - Clean habit title with streak counter
+    - Primary 48px check button for the selected day with tactile feedback
+    - 7-day mini dot trail showing weekly consistency at a glance
+  - **View Toggle**: A quiet control allowing the user to flip between "Day Focus Card" and "Scrollable Grid" view on mobile.
 
-### 2. Architecture & Data Strategy
+#### C. Streamlined Mobile Rank & Progress Header
+- In `App.tsx` and `RankCard.tsx`:
+  - Compact mobile hero that displays the rank shield, discipline percentage ring, and week navigator without pushing habits off the initial screen view.
+  - Reduced vertical spacing on mobile (`py-3` instead of `py-8`) to maximize viewport utility.
 
-```
-┌────────────────────────────────────────────────────────┐
-│                      User Interface                    │
-│                                                        │
-│  ┌───────────────────────┐   ┌──────────────────────┐  │
-│  │ DeleteAccountModal    │   │  LeaderboardTable    │  │
-│  │ (Code Input & Status) │   │  (Instant Real-Time  │  │
-│  │                       │   │   Removal via RTDB)  │  │
-│  └───────────┬───────────┘   └──────────▲───────────┘  │
-└──────────────┼──────────────────────────┼──────────────┘
-               │                          │
-               ▼                          │
-┌─────────────────────────────────────────┴──────────────┐
-│                  Deletion Controller                   │
-│                                                        │
-│  1. RTDB: remove(ref(rtdb, 'leaderboard/' + uid))      │
-│  2. Firestore: deleteDoc(leaderboard & user_data)      │
-│  3. Auth: deleteUser(auth.currentUser)                 │
-│  4. Local: localStorage.clearKeys()                    │
-└────────────────────────────────────────────────────────┘
-```
+#### D. Mobile Leaderboard Podium & Table
+- In `LeaderboardTable.tsx` and `LeaderboardPodium.tsx`:
+  - Stacked mobile podium cards with medals (#1, #2, #3) sized appropriately for 360px–420px screens.
+  - Leaderboard rows formatted with avatar, name, rank pill, and discipline percentage with zero horizontal scroll clipping.
 
 ---
 
-### 3. Implementation Steps
+### 2. Implementation Steps
 
-1. **Deletion Verification Service (`src/services/accountDeletion.ts`)**:
-   - Manage pending deletion tokens and 6-digit codes.
-   - Method `requestDeletionCode(email, uid)` to generate and store code with timestamp.
-   - Method `verifyDeletionCode(uid, code)` to validate the input.
-   - Method `executeCompleteAccountPurge(uid)` to run the atomic deletion sequence across RTDB, Firestore, Auth, and local cache.
-2. **Firebase Service Enhancements (`src/services/firebase.ts`)**:
-   - Export `purgeUserEntirely(uid)` combining `removeUserFromRealtimeLeaderboard`, `deleteFirestoreLeaderboardEntry`, and Firebase Auth `deleteUser`.
-3. **Interactive Delete Account Modal (`src/components/DeleteAccountModal.tsx`)**:
-   - Step 1: Warning, explanation, and "Send Confirmation Code to Gmail" button.
-   - Step 2: 6-digit code input field, email delivery confirmation badge, resend button, and "Permanently Delete Everything" button.
-   - Step 3: Success state with logout and redirect.
-4. **Settings & Profile Integration**:
-   - Mount "Delete Account" button in `LeaderboardSettingsModal.tsx` and user profile banner.
+1. **Create Mobile Navigation Component (`src/components/MobileBottomNav.tsx`)**:
+   - Pinned bottom bar rendered only on `sm:hidden`.
+   - Coordinates with `activeTab` ('matrix' vs 'leaderboard') and modal triggers (`isRankLadderOpen`, `isPortabilityOpen`, settings).
+2. **Enhance `WeeklyGrid.tsx` with Mobile Card View**:
+   - Add mobile-specific day switcher state (defaults to today's day of week).
+   - Render `MobileHabitCard` list for small screens while preserving the existing table for `hidden sm:block`.
+3. **Optimize Header & Metric Hero for Mobile**:
+   - Adjust `RankCard` and `MetricCircle` padding/sizing for mobile screens using `text-sm sm:text-base` and `w-14 h-14 sm:w-20 sm:h-20`.
+4. **Tune Leaderboard for Mobile Screens**:
+   - Add responsive card mode for leaderboard rows on mobile.
+5. **Verify Compilation & Responsiveness**:
+   - Run `lint_applet` and `compile_applet`.

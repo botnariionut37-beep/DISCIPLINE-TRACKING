@@ -334,7 +334,96 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
       {/* Main Rankings List */}
       {entries.length > 0 ? (
         <div id="leaderboard-list" className="rounded-2xl border border-white/10 bg-[#0E1118]/80 backdrop-blur-md overflow-hidden shadow-xl">
-          <div className="overflow-x-auto">
+          {/* Mobile-Exclusive Streamlined Cards View */}
+          <div className="block md:hidden divide-y divide-white/5">
+            {filteredEntries.map((warrior) => {
+              const rankMeta = RANK_TIERS.find(r => r.index === warrior.rankIndex) || RANK_TIERS[0];
+              const isMe = warrior.userId === currentUserId;
+              const absolutePosition = sortedByModeEntries.findIndex(e => e.userId === warrior.userId) + 1;
+
+              return (
+                <div
+                  key={warrior.userId}
+                  onClick={() => onSelectWarrior(warrior)}
+                  className={`p-3.5 flex items-center justify-between gap-3 cursor-pointer transition-colors active:bg-white/10 ${
+                    isMe ? 'bg-emerald-950/25' : 'hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {/* Rank Number */}
+                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg font-black text-xs shrink-0 ${
+                      absolutePosition === 1 ? 'bg-amber-400 text-black shadow-md shadow-amber-400/30' :
+                      absolutePosition === 2 ? 'bg-slate-300 text-black' :
+                      absolutePosition === 3 ? 'bg-amber-700 text-white' :
+                      'bg-white/5 text-slate-400 border border-white/5'
+                    }`}>
+                      #{absolutePosition}
+                    </span>
+
+                    {/* Avatar */}
+                    <div 
+                      className="w-10 h-10 rounded-xl overflow-hidden p-0.5 shrink-0 shadow"
+                      style={{ background: `linear-gradient(135deg, ${rankMeta.accentColor}, #1A202C)` }}
+                    >
+                      {warrior.photoURL ? (
+                        <img 
+                          src={warrior.photoURL} 
+                          alt={warrior.displayName} 
+                          className="w-full h-full object-cover rounded-[9px]" 
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-[#131722] flex items-center justify-center font-bold text-white text-xs">
+                          {warrior.displayName.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Name & Tier */}
+                    <div className="min-w-0">
+                      <div className="font-bold text-white text-sm truncate flex items-center gap-1.5">
+                        <span className="truncate">{warrior.customAlias || warrior.displayName}</span>
+                        {isMe && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30 shrink-0">
+                            YOU
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
+                        <span style={{ color: rankMeta.accentColor }} className="font-semibold">
+                          {rankMeta.name}
+                        </span>
+                        <span>·</span>
+                        <span>{warrior.qualifyingWeeks} wks</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Score & Chevron */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <span className="font-bold text-emerald-400 text-sm flex items-center justify-end gap-0.5">
+                        <Flame className="w-3.5 h-3.5" />
+                        {warrior.disciplineScore}%
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        {warrior.weeklyCompletedChecks}/{warrior.weeklyTargetChecks}
+                      </span>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-500" />
+                  </div>
+                </div>
+              );
+            })}
+
+            {filteredEntries.length === 0 && (
+              <div className="p-8 text-center text-slate-400 text-xs">
+                No warriors match the current filter or search criteria.
+              </div>
+            )}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-white/10 bg-white/[0.02] text-[11px] font-bold text-slate-400 uppercase tracking-wider">

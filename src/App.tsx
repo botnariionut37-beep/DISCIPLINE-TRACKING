@@ -27,6 +27,7 @@ import { WarriorInspectorModal } from './components/WarriorInspectorModal';
 import { LeaderboardSettingsModal } from './components/LeaderboardSettingsModal';
 import { ProfilePhotoModal } from './components/ProfilePhotoModal';
 import { DeleteAccountModal } from './components/DeleteAccountModal';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { 
   subscribeToLeaderboard, 
   publishLeaderboardSnapshot, 
@@ -703,7 +704,7 @@ export default function App() {
       {/* Decorative top blur gradient bar */}
       <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600" />
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-28 sm:pb-8 space-y-5 sm:space-y-8">
         {/* Crisp Executive Header */}
         <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pb-6 border-b border-white/5" id="app-header">
           <div className="flex flex-col gap-2">
@@ -1260,6 +1261,28 @@ export default function App() {
             );
           }
         }}
+      />
+
+      {/* Mobile-Exclusive Bottom Navigation Dock */}
+      <MobileBottomNav
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onOpenRankLadder={() => setIsRankLadderOpen(true)}
+        onScrollToStats={() => {
+          const statsEl = document.getElementById('insights-section');
+          if (statsEl) {
+            statsEl.scrollIntoView({ behavior: 'smooth' });
+          }
+        }}
+        onOpenAccount={() => {
+          if (!user) {
+            setIsAuthModalOpen(true);
+          } else {
+            setIsLeaderboardSettingsOpen(true);
+          }
+        }}
+        userRankName={rankProgress.currentRank.name}
+        isLoggedIn={Boolean(user)}
       />
     </div>
   );

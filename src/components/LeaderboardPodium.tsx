@@ -37,44 +37,44 @@ export const LeaderboardPodium: React.FC<LeaderboardPodiumProps> = ({
 
     const config = {
       1: {
-        order: 'order-1 md:order-2',
-        height: 'h-64 sm:h-72',
+        order: 'order-1 sm:order-2',
+        height: 'h-auto py-4 sm:py-5 sm:h-72',
         border: 'border-amber-400/50 hover:border-amber-300',
         bg: 'bg-gradient-to-b from-amber-500/15 via-[#16130B]/90 to-[#0C0E12]',
         badgeBg: 'bg-amber-400 text-black',
         icon: <Crown className="w-5 h-5 text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" />,
         shadow: 'shadow-[0_0_30px_rgba(245,158,11,0.2)]',
         label: mode === 'weekly' ? '1st Weekly Leader' : '1st Champion',
-        scale: 'scale-105 z-10',
+        scale: 'sm:scale-105 z-10',
       },
       2: {
-        order: 'order-2 md:order-1',
-        height: 'h-56 sm:h-64',
+        order: 'order-2 sm:order-1',
+        height: 'h-auto py-4 sm:py-5 sm:h-64',
         border: 'border-slate-300/40 hover:border-slate-200',
         bg: 'bg-gradient-to-b from-slate-400/10 via-[#13161C]/90 to-[#0C0E12]',
         badgeBg: 'bg-slate-300 text-black',
         icon: <Trophy className="w-4 h-4 text-slate-300" />,
         shadow: 'shadow-[0_0_20px_rgba(203,213,225,0.15)]',
         label: '2nd Runner-up',
-        scale: 'scale-100',
+        scale: 'sm:scale-100',
       },
       3: {
-        order: 'order-3 md:order-3',
-        height: 'h-52 sm:h-60',
+        order: 'order-3 sm:order-3',
+        height: 'h-auto py-4 sm:py-5 sm:h-60',
         border: 'border-amber-700/40 hover:border-amber-600',
         bg: 'bg-gradient-to-b from-amber-800/10 via-[#151210]/90 to-[#0C0E12]',
         badgeBg: 'bg-amber-700 text-amber-100',
         icon: <Medal className="w-4 h-4 text-amber-500" />,
         shadow: 'shadow-[0_0_20px_rgba(180,83,9,0.15)]',
         label: '3rd Place',
-        scale: 'scale-95',
+        scale: 'sm:scale-95',
       },
     }[position];
 
     return (
       <div
         onClick={() => onSelectWarrior(entry)}
-        className={`flex-1 flex flex-col justify-end items-center cursor-pointer transition-all duration-300 transform hover:-translate-y-1.5 ${config.order} ${config.scale}`}
+        className={`w-full sm:flex-1 flex flex-col justify-end items-center cursor-pointer transition-all duration-300 transform hover:-translate-y-1.5 ${config.order} ${config.scale}`}
       >
         {/* Crown / Trophy Floating Pill */}
         <div className="flex items-center gap-1.5 mb-2.5 px-3 py-1 rounded-full bg-[#1A1F2C] border border-white/10 shadow-lg text-xs font-semibold">
@@ -181,7 +181,7 @@ export const LeaderboardPodium: React.FC<LeaderboardPodiumProps> = ({
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row items-end justify-center gap-4 sm:gap-6 pt-6 pb-2">
+      <div className="flex flex-col sm:flex-row items-center sm:items-end justify-center gap-3 sm:gap-6 pt-4 sm:pt-6 pb-2">
         {renderPodiumCard(second, 2)}
         {renderPodiumCard(first, 1)}
         {renderPodiumCard(third, 3)}
