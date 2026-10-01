@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to integrate Firebase Realtime Database live leaderboard using the provided databaseURL (discipline-90780-default-rtdb.firebaseio.com) and onValue real-time listener.",
-  "updatedAt":  "2026-10-01T18:18:48.090837869Z",
+  "summary":  "Implementation plan for email-verified account deletion that sends a confirmation notification to the user's Gmail and completely purges all data across Firebase Realtime Database, Firestore, Auth, and local cache.",
+  "updatedAt":  "2026-10-01T18:29:23.582148925Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

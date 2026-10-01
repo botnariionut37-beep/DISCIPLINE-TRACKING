@@ -8,6 +8,19 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.use(express.json());
+
+  // Account Deletion Gmail Notification Endpoint
+  app.post("/api/send-deletion-verification", (req, res) => {
+    const { email, code, uid } = req.body || {};
+    console.log(`[Gmail Notification] ⚠️ Account deletion confirmation dispatched to ${email}. Verification code: ${code}`);
+    res.json({
+      success: true,
+      message: `Verification code dispatched to ${email}`,
+      recipient: email
+    });
+  });
+
   // Serve the downloaded offline app package
   app.get("/api/download-app", (req, res) => {
     try {

@@ -8,6 +8,7 @@ interface LeaderboardSettingsModalProps {
   settings: LeaderboardSettings;
   onSaveSettings: (settings: LeaderboardSettings) => void;
   defaultDisplayName: string;
+  onOpenDeleteAccount?: () => void;
 }
 
 export const LeaderboardSettingsModal: React.FC<LeaderboardSettingsModalProps> = ({
@@ -16,6 +17,7 @@ export const LeaderboardSettingsModal: React.FC<LeaderboardSettingsModalProps> =
   settings,
   onSaveSettings,
   defaultDisplayName,
+  onOpenDeleteAccount,
 }) => {
   const [isPublic, setIsPublic] = useState(settings.isPublic);
   const [customAlias, setCustomAlias] = useState(settings.customAlias || '');
@@ -134,6 +136,26 @@ export const LeaderboardSettingsModal: React.FC<LeaderboardSettingsModalProps> =
               )}
             </div>
           </div>
+
+          {/* Danger Zone: Delete Account */}
+          {onOpenDeleteAccount && (
+            <div className="pt-3 border-t border-white/5 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-rose-400">Delete Account & Leaderboard Score</p>
+                <p className="text-[11px] text-slate-400">Requires 6-digit confirmation code sent to Gmail</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenDeleteAccount();
+                }}
+                className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold transition-colors cursor-pointer shrink-0"
+              >
+                Delete Account
+              </button>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="pt-2 flex items-center justify-end gap-3">

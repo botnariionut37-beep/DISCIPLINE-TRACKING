@@ -466,3 +466,46 @@ export async function saveFirestoreUserData(userId: string, data: any): Promise<
     handleFirestoreError(error, OperationType.WRITE, path);
   }
 }
+
+/**
+ * Permanently purge user data from Firebase Realtime Database, Firestore collections, and Auth
+ */
+export async function purgeUserFromFirebase(userId: string): Promise<void> {
+  if (!userId) return;
+
+  // 1. Purge from Firebase Realtime Database (leaderboard/{uid})
+  try {
+    await removeUserFromRealtimeLeaderboard(userId);
+    console.log('[Firebase RTDB] Purged user from realtime leaderboard:', userId);
+  } catch (err) {
+    console.warn('[Firebase RTDB] Purge leaderboard notice:', err);
+  }
+
+  // 2. Purge from Firestore (discipline_leaderboard and discipline_user_data)
+  try {
+    await deleteFirestoreLeaderboardEntry(userId);
+  } catch (err) {
+    console.warn('[Firebase Firestore] Delete leaderboard document notice:', err);
+  }
+
+  try {
+    const userDataRef = doc(db, 'discipline_user_data', userId);
+    await deleteDoc(userDataRef);
+    console.log('[Firebase Firestore] Purged user data document:', userId);
+  } catch (err) {
+    console.warn('[Firebase Firestore] Delete user data document notice:', err);
+  }
+
+  // 3. Delete Firebase Auth account if the signed-in user matches
+  try {
+    if (auth.currentUser && auth.currentUser.uid === userId) {
+      await auth.currentUser.delete();
+      console.log('[Firebase Auth] Current user account deleted from Firebase Auth');
+    }
+  } catch (authErr: any) {
+    console.warn('[Firebase Auth] User delete notice (may require recent login):', authErr);
+    try {
+      await firebaseSignOut(auth);
+    } catch {}
+  }
+}

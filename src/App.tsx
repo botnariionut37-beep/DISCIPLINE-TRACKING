@@ -26,6 +26,7 @@ import { LeaderboardTable } from './components/LeaderboardTable';
 import { WarriorInspectorModal } from './components/WarriorInspectorModal';
 import { LeaderboardSettingsModal } from './components/LeaderboardSettingsModal';
 import { ProfilePhotoModal } from './components/ProfilePhotoModal';
+import { DeleteAccountModal } from './components/DeleteAccountModal';
 import { 
   subscribeToLeaderboard, 
   publishLeaderboardSnapshot, 
@@ -184,6 +185,7 @@ export default function App() {
   const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
   const [selectedWarrior, setSelectedWarrior] = useState<LeaderboardEntry | null>(null);
   const [isLeaderboardSettingsOpen, setIsLeaderboardSettingsOpen] = useState(false);
+  const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
   const [leaderboardSettings, setLeaderboardSettings] = useState<LeaderboardSettings>(getLocalLeaderboardSettings);
 
   const { syncStatus, lastSyncedAt, pushToCloud, forceSync } = useCloudSync({
@@ -336,7 +338,7 @@ export default function App() {
         categories,
         leaderboardSettings
       );
-    }, 400);
+    }, 1000);
     return () => clearTimeout(timer);
   }, [user, rankProgress, calculatedStats, categories, leaderboardSettings]);
 
@@ -1221,7 +1223,22 @@ export default function App() {
         settings={leaderboardSettings}
         onSaveSettings={handleSaveLeaderboardSettings}
         defaultDisplayName={user?.displayName || (user?.email ? user.email.split('@')[0] : 'Warrior')}
+        onOpenDeleteAccount={() => setIsDeleteAccountOpen(true)}
       />
+
+      {/* Email-Verified Delete Account Confirmation Modal */}
+      {isDeleteAccountOpen && user && (
+        <DeleteAccountModal
+          isOpen={isDeleteAccountOpen}
+          onClose={() => setIsDeleteAccountOpen(false)}
+          userEmail={user.email || 'warrior@discipline.app'}
+          userId={user.uid}
+          onDeletionSuccess={() => {
+            setIsDeleteAccountOpen(false);
+            window.location.reload();
+          }}
+        />
+      )}
 
       {/* Warrior Profile Photo Selection Modal */}
       <ProfilePhotoModal
