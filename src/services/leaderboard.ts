@@ -5,8 +5,11 @@ import {
   deleteFirestoreLeaderboardEntry,
   syncLocalEntriesToFirestore,
   saveUserScoreToLeaderboard,
+  updateUserPushUpsInRealtime,
   listenToRealtimeLeaderboard,
   removeUserFromRealtimeLeaderboard,
+  purgeRealtimeLeaderboardByNameOrId,
+  purgeFirestoreLeaderboardByNameOrId,
   RealtimeLeaderboardItem,
   renderLeaderboardToElement
 } from './firebase';
@@ -27,7 +30,11 @@ export function getLocalLeaderboardSettings(): LeaderboardSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return DEFAULT_LEADERBOARD_SETTINGS;
-    return { ...DEFAULT_LEADERBOARD_SETTINGS, ...JSON.parse(raw) };
+    const parsed = { ...DEFAULT_LEADERBOARD_SETTINGS, ...JSON.parse(raw) };
+    if (parsed.customAlias && parsed.customAlias.trim().toLowerCase() === 'just') {
+      parsed.customAlias = '';
+    }
+    return parsed;
   } catch {
     return DEFAULT_LEADERBOARD_SETTINGS;
   }
@@ -48,8 +55,16 @@ export function getStoredCommunityEntries(): LeaderboardEntry[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as LeaderboardEntry[];
     if (Array.isArray(parsed)) {
-      // Strictly exclude any seed/bot accounts
-      return parsed.filter(entry => entry.userId && !entry.userId.startsWith('seed-warrior-'));
+      // Strictly exclude any seed/bot accounts, 'JUST', and any 'Warrior' / 'warrior-*' accounts
+      return parsed.filter(entry => {
+        if (!entry.userId || entry.userId.startsWith('seed-warrior-')) return false;
+        const name = (entry.displayName || '').trim().toLowerCase();
+        const alias = (entry.customAlias || '').trim().toLowerCase();
+        const id = (entry.userId || '').trim().toLowerCase();
+        if (name === 'just' || alias === 'just' || id === 'just') return false;
+        if (name === 'warrior' || alias === 'warrior' || id.startsWith('warrior-')) return false;
+        return true;
+      });
     }
     return [];
   } catch {
@@ -111,9 +126,13 @@ export async function publishLeaderboardSnapshot(
     };
   });
 
-  const resolvedName = settings.customAlias.trim() 
+  let resolvedName = settings.customAlias.trim() 
     || userProfile.displayName 
     || (userProfile.email ? userProfile.email.split('@')[0] : 'Warrior');
+
+  if (resolvedName.trim().toLowerCase() === 'just') {
+    resolvedName = userProfile.email ? userProfile.email.split('@')[0] : 'Warrior';
+  }
 
   const todayKey = `discipline_pushups_${new Date().toISOString().slice(0, 10)}`;
   const dailyPushups = parseInt(localStorage.getItem(todayKey) || '0', 10);
@@ -156,7 +175,9 @@ export async function publishLeaderboardSnapshot(
       photoURL: entry.photoURL,
       score: entry.disciplineScore,
       rankName: entry.rankName,
-      rankIndex: entry.rankIndex
+      rankIndex: entry.rankIndex,
+      dailyPushups: entry.dailyPushups,
+      allTimePushups: entry.allTimePushups
     });
   } catch (rtdbErr) {
     console.warn('[Firebase RTDB Leaderboard] Write notice:', rtdbErr);
@@ -230,7 +251,14 @@ export function subscribeToLeaderboard(
       .filter(e => e.userId && !e.userId.startsWith('seed-warrior-'))
       .forEach(e => map.set(e.userId, e));
 
-    const combined = Array.from(map.values());
+    const isJust = (e: LeaderboardEntry) => {
+      const name = (e.displayName || '').trim().toLowerCase();
+      const alias = (e.customAlias || '').trim().toLowerCase();
+      const id = (e.userId || '').trim().toLowerCase();
+      return name === 'just' || alias === 'just' || id === 'just';
+    };
+
+    const combined = Array.from(map.values()).filter(e => !isJust(e));
 
     // Filter public or current user entries
     const visible = combined
@@ -449,6 +477,16 @@ export async function purgeWarriorByNameOrId(target: string): Promise<boolean> {
   if (!target) return false;
   const cleanTarget = target.trim().toLowerCase();
 
+  // Purge from Firebase Realtime Database and Firestore by scanning remote entries
+  try {
+    await Promise.allSettled([
+      purgeRealtimeLeaderboardByNameOrId(cleanTarget),
+      purgeFirestoreLeaderboardByNameOrId(cleanTarget),
+    ]);
+  } catch (e) {
+    console.warn('Remote purge warning:', e);
+  }
+
   const existing = getStoredCommunityEntries();
   const matched = existing.find(e => 
     e.userId.toLowerCase() === cleanTarget ||
@@ -456,8 +494,9 @@ export async function purgeWarriorByNameOrId(target: string): Promise<boolean> {
     (e.customAlias && e.customAlias.toLowerCase() === cleanTarget)
   );
 
-  const targetId = matched ? matched.userId : target;
-  await removeLeaderboardEntry(targetId);
+  if (matched) {
+    await removeLeaderboardEntry(matched.userId);
+  }
 
   // Filter out any matches by name in local storage
   const filtered = existing.filter(e => 
@@ -473,12 +512,8 @@ export async function purgeWarriorByNameOrId(target: string): Promise<boolean> {
 // Auto-run push-up reset and removal of JUST account upon initial load
 if (typeof window !== 'undefined') {
   try {
-    const hasCleaned = localStorage.getItem('discipline_purge_just_and_pushups_v1');
-    if (!hasCleaned) {
-      resetAllPushUps();
-      purgeWarriorByNameOrId('JUST');
-      localStorage.setItem('discipline_purge_just_and_pushups_v1', 'true');
-    }
+    resetAllPushUps();
+    purgeWarriorByNameOrId('JUST');
   } catch (e) {
     // Non-blocking
   }

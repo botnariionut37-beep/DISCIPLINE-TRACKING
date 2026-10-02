@@ -1,6 +1,6 @@
 {
-  "summary":  "Reverted the Delete Account button from the Warrior Inspector Modal footer as requested, keeping the modal clean and preserving the push-up reset and JUST account purge.",
-  "updatedAt":  "2026-10-02T12:33:27.117110277Z",
+  "summary":  "Completely deleted and purged the 'JUST' account across Firebase Realtime Database, Firestore, local browser storage, and real-time subscription streams.",
+  "updatedAt":  "2026-10-02T12:40:32.560610134Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

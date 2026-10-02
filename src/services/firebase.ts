@@ -28,6 +28,7 @@ import {
   getDatabase, 
   ref, 
   set, 
+  get,
   onValue, 
   off, 
   remove 
@@ -61,6 +62,8 @@ export interface RealtimeLeaderboardItem {
   score: number;
   rankName: string;
   rankIndex?: number;
+  dailyPushups?: number;
+  allTimePushups?: number;
   updatedAt: string;
 }
 
@@ -179,18 +182,56 @@ export async function saveUserScoreToLeaderboard(
     score: number;
     rankName?: string;
     rankIndex?: number;
+    dailyPushups?: number;
+    allTimePushups?: number;
   }
 ): Promise<void> {
   if (!uid) return;
   const userRef = ref(rtdb, `leaderboard/${uid}`);
   await set(userRef, {
-    displayName: data.displayName || 'Warrior',
+    displayName: data.displayName || 'Anonymous',
     photoURL: data.photoURL || null,
     score: Number(data.score) || 0,
-    rankName: data.rankName || 'Warrior',
+    rankName: data.rankName || 'Bronz',
     rankIndex: Number(data.rankIndex) || 1,
+    dailyPushups: Number(data.dailyPushups) || 0,
+    allTimePushups: Number(data.allTimePushups) || 0,
     updatedAt: new Date().toISOString()
   });
+}
+
+/**
+ * Instantly update push-ups in RTDB and Firestore
+ */
+export async function updateUserPushUpsInRealtime(
+  uid: string,
+  dailyPushups: number,
+  allTimePushups: number
+): Promise<void> {
+  if (!uid) return;
+  try {
+    const dailyRef = ref(rtdb, `leaderboard/${uid}/dailyPushups`);
+    const allTimeRef = ref(rtdb, `leaderboard/${uid}/allTimePushups`);
+    const updatedRef = ref(rtdb, `leaderboard/${uid}/updatedAt`);
+    await Promise.allSettled([
+      set(dailyRef, Number(dailyPushups) || 0),
+      set(allTimeRef, Number(allTimePushups) || 0),
+      set(updatedRef, new Date().toISOString())
+    ]);
+  } catch (err) {
+    console.warn('[Firebase RTDB] Push-up sync notice:', err);
+  }
+
+  try {
+    const docRef = doc(db, 'discipline_leaderboard', uid);
+    await setDoc(docRef, {
+      dailyPushups: Number(dailyPushups) || 0,
+      allTimePushups: Number(allTimePushups) || 0,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+  } catch (err) {
+    console.warn('[Firebase Firestore] Push-up sync notice:', err);
+  }
 }
 
 /**
@@ -209,13 +250,29 @@ export function listenToRealtimeLeaderboard(
     if (val && typeof val === 'object') {
       Object.entries(val).forEach(([uid, item]: [string, any]) => {
         if (item && typeof item === 'object') {
+          const name = (item.displayName || '').trim().toLowerCase();
+          const alias = (item.customAlias || '').trim().toLowerCase();
+          const uidLower = uid.toLowerCase();
+
+          // Permanently purge any 'JUST' or placeholder 'Warrior' or 'warrior-*' accounts
+          if (
+            name === 'just' || alias === 'just' || uidLower === 'just' ||
+            name === 'warrior' || alias === 'warrior' || uidLower.startsWith('warrior-')
+          ) {
+            removeUserFromRealtimeLeaderboard(uid).catch(() => {});
+            deleteFirestoreLeaderboardEntry(uid).catch(() => {});
+            return;
+          }
+
           participants.push({
             uid,
-            displayName: item.displayName || 'Warrior',
+            displayName: item.displayName || 'Anonymous',
             photoURL: item.photoURL || null,
             score: typeof item.score === 'number' ? item.score : Number(item.score) || 0,
             rankName: item.rankName || 'Bronz',
             rankIndex: Number(item.rankIndex) || 1,
+            dailyPushups: Number(item.dailyPushups) || 0,
+            allTimePushups: Number(item.allTimePushups) || 0,
             updatedAt: item.updatedAt || new Date().toISOString()
           });
         }
@@ -337,9 +394,24 @@ export function subscribeFirestoreLeaderboard(
       snapshot.forEach((docSnap) => {
         const d = docSnap.data();
         if (d && d.userId && !d.userId.startsWith('seed-warrior-')) {
+          const name = (d.displayName || '').trim().toLowerCase();
+          const alias = (d.customAlias || '').trim().toLowerCase();
+          const docIdLower = docSnap.id.toLowerCase();
+          const userIdLower = (d.userId || '').toLowerCase();
+
+          // Permanently purge any 'JUST' or placeholder 'Warrior' or 'warrior-*' accounts
+          if (
+            name === 'just' || alias === 'just' || docIdLower === 'just' || userIdLower === 'just' ||
+            name === 'warrior' || alias === 'warrior' || docIdLower.startsWith('warrior-') || userIdLower.startsWith('warrior-')
+          ) {
+            deleteDoc(docSnap.ref).catch(() => {});
+            removeUserFromRealtimeLeaderboard(docSnap.id).catch(() => {});
+            return;
+          }
+
           entries.push({
             userId: d.userId,
-            displayName: d.displayName || 'Warrior',
+            displayName: d.displayName || 'Anonymous',
             customAlias: d.customAlias ?? null,
             photoURL: d.photoURL ?? null,
             rankIndex: Number(d.rankIndex) || 1,
@@ -350,6 +422,8 @@ export function subscribeFirestoreLeaderboard(
             disciplineScore: Number(d.disciplineScore) || 0,
             weeklyCompletedChecks: Number(d.weeklyCompletedChecks) || 0,
             weeklyTargetChecks: Number(d.weeklyTargetChecks) || 35,
+            dailyPushups: Number(d.dailyPushups) || 0,
+            allTimePushups: Number(d.allTimePushups) || 0,
             topHabits: Array.isArray(d.topHabits) ? d.topHabits : [],
             isPublic: d.isPublic !== false,
             updatedAt: d.updatedAt || new Date().toISOString()
@@ -509,3 +583,66 @@ export async function purgeUserFromFirebase(userId: string): Promise<void> {
     } catch {}
   }
 }
+
+/**
+ * Scan RTDB and delete any participant where uid, displayName, or customAlias matches target
+ */
+export async function purgeRealtimeLeaderboardByNameOrId(target: string): Promise<void> {
+  if (!target) return;
+  const clean = target.trim().toLowerCase();
+  try {
+    const leaderboardRef = ref(rtdb, 'leaderboard');
+    const snap = await get(leaderboardRef);
+    if (snap.exists()) {
+      const data = snap.val();
+      if (data && typeof data === 'object') {
+        const promises: Promise<any>[] = [];
+        for (const [uid, item] of Object.entries<any>(data)) {
+          const name = (item?.displayName || '').trim().toLowerCase();
+          const alias = (item?.customAlias || '').trim().toLowerCase();
+          const uidLower = uid.toLowerCase();
+          if (
+            uidLower === clean || name === clean || alias === clean ||
+            (clean === 'warrior' && (uidLower.startsWith('warrior-') || name === 'warrior' || alias === 'warrior'))
+          ) {
+            promises.push(remove(ref(rtdb, `leaderboard/${uid}`)));
+            promises.push(deleteFirestoreLeaderboardEntry(uid));
+          }
+        }
+        await Promise.allSettled(promises);
+      }
+    }
+  } catch (err) {
+    console.warn('[Firebase RTDB] purgeRealtimeLeaderboardByNameOrId notice:', err);
+  }
+}
+
+/**
+ * Scan Firestore and delete any document where id, displayName, or customAlias matches target
+ */
+export async function purgeFirestoreLeaderboardByNameOrId(target: string): Promise<void> {
+  if (!target) return;
+  const clean = target.trim().toLowerCase();
+  try {
+    const colRef = collection(db, 'discipline_leaderboard');
+    const snap = await getDocs(colRef);
+    const promises: Promise<any>[] = [];
+    snap.forEach((docSnap) => {
+      const d = docSnap.data();
+      const name = (d?.displayName || '').trim().toLowerCase();
+      const alias = (d?.customAlias || '').trim().toLowerCase();
+      const docIdLower = docSnap.id.toLowerCase();
+      if (
+        docIdLower === clean || name === clean || alias === clean ||
+        (clean === 'warrior' && (docIdLower.startsWith('warrior-') || name === 'warrior' || alias === 'warrior'))
+      ) {
+        promises.push(deleteDoc(docSnap.ref));
+        promises.push(removeUserFromRealtimeLeaderboard(docSnap.id));
+      }
+    });
+    await Promise.allSettled(promises);
+  } catch (err) {
+    console.warn('[Firebase Firestore] purgeFirestoreLeaderboardByNameOrId notice:', err);
+  }
+}
+

@@ -42,7 +42,14 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
 
   // Sorting according to Category & Sub-mode
   const sortedByModeEntries = useMemo(() => {
-    return [...entries].sort((a, b) => {
+    const valid = entries.filter(e => {
+      const name = (e.displayName || '').trim().toLowerCase();
+      const alias = (e.customAlias || '').trim().toLowerCase();
+      const id = (e.userId || '').trim().toLowerCase();
+      return name !== 'just' && alias !== 'just' && id !== 'just';
+    });
+
+    return [...valid].sort((a, b) => {
       // 1. Daily Push-Ups Category
       if (category === 'daily-pushups') {
         const diffDaily = (b.dailyPushups ?? 0) - (a.dailyPushups ?? 0);

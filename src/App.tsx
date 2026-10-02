@@ -37,6 +37,10 @@ import {
   getLocalLeaderboardSettings, 
   saveLocalLeaderboardSettings 
 } from './services/leaderboard';
+import { 
+  purgeRealtimeLeaderboardByNameOrId, 
+  purgeFirestoreLeaderboardByNameOrId 
+} from './services/firebase';
 import { LeaderboardEntry, LeaderboardSettings } from './types/leaderboard';
 import { useAuth } from './context/AuthContext';
 import { useCloudSync } from './hooks/useCloudSync';
@@ -215,6 +219,33 @@ export default function App() {
     });
     return () => unsubscribe();
   }, [user?.uid]);
+
+  // Completely delete and purge the "JUST" account locally and remotely
+  useEffect(() => {
+    purgeRealtimeLeaderboardByNameOrId('JUST');
+    purgeFirestoreLeaderboardByNameOrId('JUST');
+
+    const currentAlias = localStorage.getItem('discipline_user_alias');
+    if (currentAlias && currentAlias.trim().toLowerCase() === 'just') {
+      localStorage.removeItem('discipline_user_alias');
+    }
+    const localUid = localStorage.getItem('discipline_local_user_id');
+    if (localUid && localUid.toLowerCase() === 'just') {
+      localStorage.removeItem('discipline_local_user_id');
+    }
+    const settings = getLocalLeaderboardSettings();
+    if (settings.customAlias && settings.customAlias.trim().toLowerCase() === 'just') {
+      const clean = { ...settings, customAlias: '' };
+      setLeaderboardSettings(clean);
+      saveLocalLeaderboardSettings(clean);
+    }
+    if (selectedWarrior) {
+      const name = (selectedWarrior.customAlias || selectedWarrior.displayName).trim().toLowerCase();
+      if (name === 'just' || selectedWarrior.userId.toLowerCase() === 'just') {
+        setSelectedWarrior(null);
+      }
+    }
+  }, [selectedWarrior]);
 
   // Compute live scores for the current selected week
   const weekChecks = useMemo(() => {
