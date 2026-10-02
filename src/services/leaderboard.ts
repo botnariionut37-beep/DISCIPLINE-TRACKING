@@ -115,6 +115,10 @@ export async function publishLeaderboardSnapshot(
     || userProfile.displayName 
     || (userProfile.email ? userProfile.email.split('@')[0] : 'Warrior');
 
+  const todayKey = `discipline_pushups_${new Date().toISOString().slice(0, 10)}`;
+  const dailyPushups = parseInt(localStorage.getItem(todayKey) || '0', 10);
+  const allTimePushups = parseInt(localStorage.getItem('discipline_lifetime_pushups') || '0', 10);
+
   const entry: LeaderboardEntry = {
     userId,
     displayName: resolvedName,
@@ -128,6 +132,8 @@ export async function publishLeaderboardSnapshot(
     disciplineScore: Math.round(stats.weeklyRate),
     weeklyCompletedChecks: stats.completedCount,
     weeklyTargetChecks: stats.totalPossibleCount,
+    dailyPushups,
+    allTimePushups,
     topHabits,
     isPublic: settings.isPublic,
     updatedAt: new Date().toISOString()
@@ -280,6 +286,8 @@ export function subscribeToLeaderboard(
           disciplineScore: p.score,
           weeklyCompletedChecks: Math.round((p.score / 100) * 35),
           weeklyTargetChecks: 35,
+          dailyPushups: (p as any).dailyPushups ?? 0,
+          allTimePushups: (p as any).allTimePushups ?? 0,
           topHabits: [],
           isPublic: true,
           updatedAt: p.updatedAt
@@ -399,3 +407,80 @@ export async function removeLeaderboardEntry(userId: string): Promise<void> {
     }
   }
 }
+
+/**
+ * Resets push-up counts to 0 for all participants and local storage
+ */
+export function resetAllPushUps(): void {
+  try {
+    // 1. Reset user local push-up metrics
+    localStorage.setItem('discipline_lifetime_pushups', '0');
+    const todayKey = `discipline_pushups_${new Date().toISOString().slice(0, 10)}`;
+    localStorage.setItem(todayKey, '0');
+
+    // Clear all date-based push-up keys in local storage
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('discipline_pushups_')) {
+        localStorage.setItem(key, '0');
+      }
+    }
+
+    // 2. Reset push-up fields across stored community entries
+    const existing = getStoredCommunityEntries();
+    const resetEntries = existing.map(e => ({
+      ...e,
+      dailyPushups: 0,
+      allTimePushups: 0,
+    }));
+    saveCommunityEntries(resetEntries);
+
+    // 3. Dispatch update event
+    window.dispatchEvent(new CustomEvent(LEADERBOARD_EVENT));
+  } catch (err) {
+    console.error('Failed to reset push-ups:', err);
+  }
+}
+
+/**
+ * Permanently purge a warrior by their userId or display alias (e.g. JUST)
+ */
+export async function purgeWarriorByNameOrId(target: string): Promise<boolean> {
+  if (!target) return false;
+  const cleanTarget = target.trim().toLowerCase();
+
+  const existing = getStoredCommunityEntries();
+  const matched = existing.find(e => 
+    e.userId.toLowerCase() === cleanTarget ||
+    (e.displayName && e.displayName.toLowerCase() === cleanTarget) ||
+    (e.customAlias && e.customAlias.toLowerCase() === cleanTarget)
+  );
+
+  const targetId = matched ? matched.userId : target;
+  await removeLeaderboardEntry(targetId);
+
+  // Filter out any matches by name in local storage
+  const filtered = existing.filter(e => 
+    e.userId.toLowerCase() !== cleanTarget &&
+    (!e.displayName || e.displayName.toLowerCase() !== cleanTarget) &&
+    (!e.customAlias || e.customAlias.toLowerCase() !== cleanTarget)
+  );
+  saveCommunityEntries(filtered);
+  window.dispatchEvent(new CustomEvent(LEADERBOARD_EVENT));
+  return true;
+}
+
+// Auto-run push-up reset and removal of JUST account upon initial load
+if (typeof window !== 'undefined') {
+  try {
+    const hasCleaned = localStorage.getItem('discipline_purge_just_and_pushups_v1');
+    if (!hasCleaned) {
+      resetAllPushUps();
+      purgeWarriorByNameOrId('JUST');
+      localStorage.setItem('discipline_purge_just_and_pushups_v1', 'true');
+    }
+  } catch (e) {
+    // Non-blocking
+  }
+}
+

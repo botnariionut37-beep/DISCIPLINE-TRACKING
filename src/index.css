@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -11,9 +11,152 @@ html, body {
   color: #e2e8f0;
   min-height: 100%;
   font-family: var(--font-sans);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Custom minimal scrollbar for a neat layout */
+/* ==========================================================================
+   HIGH-CONTRAST LIGHT MODE (CRISP WHITE CARDS & SHARP SLATE BORDERS)
+   ========================================================================== */
+html.light, body.light, .light {
+  background-color: #F8FAFC !important;
+  color: #0F172A !important;
+}
+
+.light #main-discipline-app {
+  background-color: #F8FAFC !important;
+  color: #0F172A !important;
+}
+
+/* Crisp Clean White Cards */
+.light .bg-\[\#0C0E12\],
+.light .bg-\[\#0A0C10\],
+.light .bg-\[\#0A0D14\],
+.light .bg-\[\#0E1118\],
+.light .bg-\[\#07080B\],
+.light .bg-\[\#090B0E\],
+.light .bg-\[\#10131B\],
+.light .bg-\[\#0B0E14\],
+.light .bg-\[\#0E121B\],
+.light .bg-\[\#11141D\],
+.light .bg-\[\#13161C\]\/90,
+.light .bg-\[\#16130B\]\/90,
+.light .bg-\[\#151210\]\/90 {
+  background-color: #FFFFFF !important;
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.06), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
+}
+
+/* Sharp Slate Card Borders */
+.light .border-white\/5,
+.light .border-white\/10,
+.light .border-white\/15,
+.light .border-white\/20,
+.light .border-white\/25 {
+  border-color: #CBD5E1 !important;
+}
+
+/* Primary Ink Headings & Bold Text */
+.light .text-white {
+  color: #0F172A !important;
+}
+
+/* Secondary Ink Text */
+.light .text-gray-200,
+.light .text-gray-300,
+.light .text-slate-200,
+.light .text-slate-300 {
+  color: #1E293B !important;
+}
+
+/* Muted Slate Text */
+.light .text-gray-400,
+.light .text-slate-400 {
+  color: #475569 !important;
+}
+
+.light .text-gray-500,
+.light .text-slate-500 {
+  color: #64748B !important;
+}
+
+/* Subtle Interactive Badges & Recessed Backgrounds */
+.light .bg-white\/5,
+.light .bg-white\/\[0\.02\],
+.light .bg-white\/\[0\.01\],
+.light .bg-white\/\[0\.03\],
+.light .bg-white\/\[0\.04\] {
+  background-color: #F1F5F9 !important;
+}
+
+.light .bg-black\/20,
+.light .bg-black\/30,
+.light .bg-black\/40,
+.light .bg-black\/50,
+.light .bg-black\/60,
+.light .bg-black\/70,
+.light .bg-black\/80 {
+  background-color: #E2E8F0 !important;
+}
+
+/* Habit Matrix Table Dividers and Cells in Light Mode */
+.light .divide-white\/5 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #E2E8F0 !important;
+}
+
+/* Unchecked Habits in Table: High Contrast Crisp Buttons */
+.light button[id^="check-"]:not(.bg-emerald-500):not(.bg-indigo-500):not(.bg-rose-500):not(.bg-blue-500):not(.bg-amber-500) {
+  background-color: #F8FAFC !important;
+  border-color: #CBD5E1 !important;
+  color: #475569 !important;
+}
+
+.light button[id^="check-"]:not(.bg-emerald-500):not(.bg-indigo-500):not(.bg-rose-500):not(.bg-blue-500):not(.bg-amber-500):hover {
+  background-color: #F1F5F9 !important;
+  border-color: #94A3B8 !important;
+}
+
+/* Disabled/Locked Grid Buttons in Light Mode */
+.light button[id^="check-"]:disabled {
+  background-color: #F1F5F9 !important;
+  border-color: #E2E8F0 !important;
+  opacity: 0.6 !important;
+}
+
+/* Form inputs & modal fields in Light Mode */
+.light input,
+.light textarea,
+.light select {
+  background-color: #FFFFFF !important;
+  border-color: #CBD5E1 !important;
+  color: #0F172A !important;
+}
+
+.light input::placeholder,
+.light textarea::placeholder {
+  color: #94A3B8 !important;
+}
+
+/* Header Switcher & Navigation Controls */
+.light .bg-\[\#0D1017\] {
+  background-color: #F1F5F9 !important;
+  border-color: #CBD5E1 !important;
+}
+
+/* Mobile Bottom Navigation Dock in Light Mode */
+.light nav[aria-label="Mobile Bottom Navigation"] {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border-color: #E2E8F0 !important;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08) !important;
+}
+
+.light nav[aria-label="Mobile Bottom Navigation"] button {
+  color: #475569;
+}
+
+.light nav[aria-label="Mobile Bottom Navigation"] button:hover {
+  color: #0F172A;
+}
+
+/* Minimal Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -22,10 +165,16 @@ html, body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.3);
 }
 
+.light ::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.2);
+}
+.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.4);
+}

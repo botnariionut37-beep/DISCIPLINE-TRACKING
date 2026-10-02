@@ -10,13 +10,13 @@ import {
   Shield, 
   BarChart3, 
   User, 
-  Sparkles 
+  Dumbbell 
 } from 'lucide-react';
 import { chime } from '../utils/audio';
 
 interface MobileBottomNavProps {
-  activeTab: 'matrix' | 'leaderboard';
-  setActiveTab: (tab: 'matrix' | 'leaderboard') => void;
+  activeTab: 'matrix' | 'workout' | 'leaderboard';
+  setActiveTab: (tab: 'matrix' | 'workout' | 'leaderboard') => void;
   onOpenRankLadder: () => void;
   onScrollToStats: () => void;
   onOpenAccount: () => void;
@@ -66,7 +66,29 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           <span className="text-[10px] font-sans mt-1 tracking-tight">Habits</span>
         </button>
 
-        {/* 2. Arena / Leaderboard */}
+        {/* 2. Workout Section */}
+        <button
+          type="button"
+          onClick={() => handleNavClick(() => {
+            setActiveTab('workout');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          })}
+          className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition-all cursor-pointer ${
+            activeTab === 'workout' 
+              ? 'text-cyan-400 bg-cyan-500/10 font-bold' 
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <div className="relative">
+            <Dumbbell className="w-5 h-5 stroke-[2]" />
+            {activeTab === 'workout' && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+            )}
+          </div>
+          <span className="text-[10px] font-sans mt-1 tracking-tight">Workout</span>
+        </button>
+
+        {/* 3. Arena / Leaderboard */}
         <button
           type="button"
           onClick={() => handleNavClick(() => {
@@ -88,7 +110,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           <span className="text-[10px] font-sans mt-1 tracking-tight">Arena</span>
         </button>
 
-        {/* 3. Rank Ladder */}
+        {/* 4. Rank Ladder */}
         <button
           type="button"
           onClick={() => handleNavClick(onOpenRankLadder)}
@@ -100,16 +122,6 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           <span className="text-[10px] font-sans mt-0.5 tracking-tight truncate max-w-[55px]">
             {userRankName || 'Ranks'}
           </span>
-        </button>
-
-        {/* 4. Analytics / Breakdown */}
-        <button
-          type="button"
-          onClick={() => handleNavClick(onScrollToStats)}
-          className="flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl text-slate-400 hover:text-white transition-all cursor-pointer"
-        >
-          <BarChart3 className="w-5 h-5 stroke-[2]" />
-          <span className="text-[10px] font-sans mt-1 tracking-tight">Stats</span>
         </button>
 
         {/* 5. Account / Profile */}

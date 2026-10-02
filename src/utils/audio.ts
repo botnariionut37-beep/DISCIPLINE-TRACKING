@@ -6,13 +6,59 @@
 class AudioSynth {
   private ctx: AudioContext | null = null;
 
-  private init() {
+  public init() {
     if (!this.ctx) {
       this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     // Resume context if suspended (browser security blocks autoplay)
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume();
+    }
+  }
+
+  /**
+   * PUNCHY ATHLETIC PUSH-UP REP CHIME
+   * Distinct, energetic harmonic burst with rapid attack (E5 + C6)
+   */
+  playPushUpRep() {
+    try {
+      this.init();
+      if (!this.ctx) return;
+
+      const now = this.ctx.currentTime;
+      
+      const osc1 = this.ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
+      const gainNode = this.ctx.createGain();
+      const filter = this.ctx.createBiquadFilter();
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(3200, now);
+      filter.frequency.exponentialRampToValueAtTime(1400, now + 0.22);
+
+      osc1.type = 'sine';
+      osc2.type = 'triangle';
+
+      // Punchy athletic chord: E5 (659.25Hz) + C6 (1046.5Hz)
+      osc1.frequency.setValueAtTime(659.25, now);
+      osc2.frequency.setValueAtTime(1046.50, now);
+
+      // Fast punchy attack (12ms), snappy decay
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.22, now + 0.012);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+
+      osc1.connect(gainNode);
+      osc2.connect(gainNode);
+      gainNode.connect(filter);
+      filter.connect(this.ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 0.3);
+      osc2.stop(now + 0.3);
+    } catch (e) {
+      console.warn('Push-up audio synthesis error:', e);
     }
   }
 

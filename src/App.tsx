@@ -28,6 +28,9 @@ import { LeaderboardSettingsModal } from './components/LeaderboardSettingsModal'
 import { ProfilePhotoModal } from './components/ProfilePhotoModal';
 import { DeleteAccountModal } from './components/DeleteAccountModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
+import { DailyMetricCard } from './components/DailyMetricCard';
+import { WorkoutDashboard } from './components/WorkoutDashboard';
+import { useTheme } from './context/ThemeContext';
 import { 
   subscribeToLeaderboard, 
   publishLeaderboardSnapshot, 
@@ -60,7 +63,10 @@ import {
   Trophy,
   Zap,
   Flame,
-  LayoutGrid
+  LayoutGrid,
+  Sun,
+  Moon,
+  Dumbbell
 } from 'lucide-react';
 
 export default function App() {
@@ -181,8 +187,11 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isProfilePhotoModalOpen, setIsProfilePhotoModalOpen] = useState(false);
 
-  // Leaderboard Arena State
-  const [activeTab, setActiveTab] = useState<'matrix' | 'leaderboard'>('matrix');
+  // Theme System
+  const { theme, toggleTheme } = useTheme();
+
+  // Navigation Tabs: Habits Matrix, Workout Arena, Leaderboard
+  const [activeTab, setActiveTab] = useState<'matrix' | 'workout' | 'leaderboard'>('matrix');
   const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
   const [selectedWarrior, setSelectedWarrior] = useState<LeaderboardEntry | null>(null);
   const [isLeaderboardSettingsOpen, setIsLeaderboardSettingsOpen] = useState(false);
@@ -323,23 +332,103 @@ export default function App() {
 
   const { completedCount, totalPossibleCount, weeklyRate: disciplineRate } = calculatedStats;
 
+  // Today's real calendar day of week
+  const todayName = useMemo(() => {
+    return new Date().toLocaleDateString('en-US', { weekday: 'long' }) as DayOfWeek;
+  }, []);
+
+  // Dedicated Daily Discipline Rate calculation for today
+  const dailyStats = useMemo(() => {
+    let todayCompleted = 0;
+    const activeWeekChecks = checks[currentRealWeekKey] || {};
+    categories.forEach((cat) => {
+      if (activeWeekChecks[cat.id]?.[todayName]) {
+        todayCompleted++;
+      }
+    });
+    const totalCategories = categories.length;
+    const dailyRate = totalCategories > 0 ? Math.round((todayCompleted / totalCategories) * 100) : 0;
+    return {
+      todayCompleted,
+      totalCategories,
+      dailyRate,
+    };
+  }, [checks, categories, currentRealWeekKey, todayName]);
+
+  // Find exercise routine category for automatic habit sync
+  const exerciseCategory = useMemo(() => {
+    return categories.find((c) => {
+      const lower = c.name.toLowerCase();
+      return (
+        lower.includes('exercise') ||
+        lower.includes('workout') ||
+        lower.includes('push') ||
+        lower.includes('gym') ||
+        lower.includes('fitness') ||
+        lower.includes('physical')
+      );
+    }) || categories[0] || null;
+  }, [categories]);
+
+  const isTodayExerciseChecked = useMemo(() => {
+    if (!exerciseCategory) return false;
+    const curChecks = checks[currentRealWeekKey] || {};
+    return Boolean(curChecks[exerciseCategory.id]?.[todayName]);
+  }, [exerciseCategory, checks, currentRealWeekKey, todayName]);
+
+  const handleAutoCheckExerciseHabit = () => {
+    let targetCat = exerciseCategory;
+    if (!targetCat) {
+      targetCat = {
+        id: `cat-${Date.now()}`,
+        name: 'Physical Exercise',
+        icon: 'Dumbbell',
+        color: 'rose',
+        createdAt: Date.now()
+      };
+      setCategories((prev) => {
+        const next = [...prev, targetCat!];
+        localStorage.setItem('discipline_categories', JSON.stringify(next));
+        return next;
+      });
+    }
+
+    setChecks((prev) => {
+      const updated = { ...prev };
+      const curWeek = updated[currentRealWeekKey] ? { ...updated[currentRealWeekKey] } : {};
+      updated[currentRealWeekKey] = curWeek;
+      const catObj = curWeek[targetCat!.id] ? { ...curWeek[targetCat!.id] } : {};
+      curWeek[targetCat!.id] = catObj;
+      catObj[todayName] = true;
+
+      localStorage.setItem('discipline_checks', JSON.stringify(updated));
+      pushToCloud(categories, updated, bonusQualifyingWeeks);
+      return updated;
+    });
+  };
+
   // Auto-publish user progress snapshot to public leaderboard when changes happen
   useEffect(() => {
-    if (!user) return;
+    const activeUid = user?.uid || localStorage.getItem('discipline_local_user_id') || (() => {
+      const generated = `warrior-${Date.now()}`;
+      localStorage.setItem('discipline_local_user_id', generated);
+      return generated;
+    })();
+
     const timer = setTimeout(() => {
       publishLeaderboardSnapshot(
-        user.uid,
+        activeUid,
         {
-          displayName: user.displayName,
-          email: user.email,
-          photoURL: user.photoURL,
+          displayName: user?.displayName || localStorage.getItem('discipline_user_alias') || 'Warrior',
+          email: user?.email,
+          photoURL: user?.photoURL || localStorage.getItem('discipline_profile_photo_url'),
         },
         rankProgress,
         calculatedStats,
         categories,
         leaderboardSettings
       );
-    }, 1000);
+    }, 800);
     return () => clearTimeout(timer);
   }, [user, rankProgress, calculatedStats, categories, leaderboardSettings]);
 
@@ -729,9 +818,10 @@ export default function App() {
                 className="cursor-pointer hover:border-emerald-500/40"
               />
 
-              {/* View Switcher: Habit Matrix vs Community Leaderboard */}
+              {/* View Switcher: Habit Matrix vs Workout vs Community Leaderboard */}
               <div className="flex items-center p-1 rounded-xl bg-[#0D1017] border border-white/10 shadow-inner">
                 <button
+                  type="button"
                   onClick={() => setActiveTab('matrix')}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                     activeTab === 'matrix'
@@ -743,6 +833,24 @@ export default function App() {
                   <span>Habit Matrix</span>
                 </button>
                 <button
+                  type="button"
+                  onClick={() => setActiveTab('workout')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    activeTab === 'workout'
+                      ? 'bg-gradient-to-r from-cyan-500 to-teal-400 text-black font-extrabold shadow-md shadow-cyan-500/25'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <Dumbbell size={13} className={activeTab === 'workout' ? 'text-black' : 'text-cyan-400'} />
+                  <span>Workout</span>
+                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-black ${
+                    activeTab === 'workout' ? 'bg-black/20 text-black' : 'bg-cyan-500/20 text-cyan-400'
+                  }`}>
+                    Vision
+                  </span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => setActiveTab('leaderboard')}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                     activeTab === 'leaderboard'
@@ -796,8 +904,23 @@ export default function App() {
               </button>
             </div>
 
-            {/* Quick Actions (Reset to current, Clear) */}
+            {/* Quick Actions (Theme Toggle, Auth, Reset to current, Clear) */}
             <div className="flex items-center gap-2 flex-wrap">
+              {/* Global Dark / High-Contrast Light Theme Toggle */}
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="p-2.5 rounded-xl border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-all cursor-pointer shadow-xs flex items-center justify-center group"
+                title={theme === 'dark' ? 'Switch to High-Contrast Light Mode' : 'Switch to Dark Mode'}
+                id="theme-toggle-btn"
+              >
+                {theme === 'dark' ? (
+                  <Sun size={15} className="text-amber-300 group-hover:rotate-45 transition-transform" />
+                ) : (
+                  <Moon size={15} className="text-indigo-600 group-hover:-rotate-12 transition-transform" />
+                )}
+              </button>
+
               {/* User Authentication & Cloud Sync Menu */}
               <UserMenu 
                 onOpenAuthModal={() => setIsAuthModalOpen(true)}
@@ -842,12 +965,20 @@ export default function App() {
               settings={leaderboardSettings}
             />
           </section>
+        ) : activeTab === 'workout' ? (
+          <section id="workout-section">
+            <WorkoutDashboard
+              onAutoCheckExerciseHabit={handleAutoCheckExerciseHabit}
+              isTodayExerciseChecked={isTodayExerciseChecked}
+              todayName={todayName}
+            />
+          </section>
         ) : (
           <>
-            {/* Dynamic Top Overview Scorecards: Discipline Rate, Rank Progression, and Stoic Guidance */}
-            <section className="grid grid-cols-1 lg:grid-cols-3 gap-6" id="dashboard-widgets-section">
-              {/* Circular Discipline Percentage meter */}
-              <div className="lg:col-span-1">
+            {/* Dynamic Top Overview Scorecards: Weekly Discipline Rate, Daily Discipline Rate, Rank Progression, and Stoic Guidance */}
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6" id="dashboard-widgets-section">
+              {/* Circular Weekly Discipline Percentage meter */}
+              <div className="col-span-1">
                 <MetricCircle 
                   percentage={disciplineRate} 
                   completed={completedCount} 
@@ -855,8 +986,18 @@ export default function App() {
                 />
               </div>
 
+              {/* Dedicated Today's Daily Discipline Rate Card */}
+              <div className="col-span-1">
+                <DailyMetricCard
+                  percentage={dailyStats.dailyRate}
+                  completed={dailyStats.todayCompleted}
+                  total={dailyStats.totalCategories}
+                  dayName={todayName}
+                />
+              </div>
+
               {/* Dedicated Discipline Ranking Hero Card */}
-              <div className="lg:col-span-1">
+              <div className="col-span-1">
                 <RankCard 
                   rankProgress={rankProgress}
                   onOpenLadder={() => setIsRankLadderOpen(true)}
@@ -866,7 +1007,7 @@ export default function App() {
               </div>
 
               {/* Stoic Motivation Panel */}
-              <div className="lg:col-span-1 flex flex-col justify-start">
+              <div className="col-span-1 flex flex-col justify-start">
                 <StoicQuoteViewer currentWeekKey={weekKey} />
               </div>
             </section>

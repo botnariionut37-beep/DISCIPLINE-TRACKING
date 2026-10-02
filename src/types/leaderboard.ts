@@ -23,6 +23,8 @@ export interface LeaderboardEntry {
   disciplineScore: number; // Current week completion rate (0-100)
   weeklyCompletedChecks: number;
   weeklyTargetChecks: number;
+  dailyPushups?: number;
+  allTimePushups?: number;
   topHabits: CompetitorHabitSummary[];
   isPublic: boolean;
   updatedAt: string;

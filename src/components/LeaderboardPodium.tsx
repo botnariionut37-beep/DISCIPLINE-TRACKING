@@ -1,13 +1,16 @@
 import React from 'react';
-import { Crown, Trophy, Medal, Sparkles, Flame, CheckCircle2 } from 'lucide-react';
+import { Crown, Trophy, Medal, Sparkles, Flame, CheckCircle2, Zap, Dumbbell } from 'lucide-react';
 import { LeaderboardEntry } from '../types/leaderboard';
 import { RANK_TIERS } from '../utils/ranks';
+
+export type LeaderboardCategory = 'discipline' | 'daily-pushups' | 'alltime-pushups';
 
 interface LeaderboardPodiumProps {
   entries: LeaderboardEntry[];
   currentUserId?: string | null;
   onSelectWarrior: (warrior: LeaderboardEntry) => void;
   mode?: 'all-time' | 'weekly';
+  category?: LeaderboardCategory;
 }
 
 export const LeaderboardPodium: React.FC<LeaderboardPodiumProps> = ({
@@ -15,6 +18,7 @@ export const LeaderboardPodium: React.FC<LeaderboardPodiumProps> = ({
   currentUserId,
   onSelectWarrior,
   mode = 'all-time',
+  category = 'discipline',
 }) => {
   if (entries.length === 0) return null;
 
@@ -44,7 +48,13 @@ export const LeaderboardPodium: React.FC<LeaderboardPodiumProps> = ({
         badgeBg: 'bg-amber-400 text-black',
         icon: <Crown className="w-5 h-5 text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" />,
         shadow: 'shadow-[0_0_30px_rgba(245,158,11,0.2)]',
-        label: mode === 'weekly' ? '1st Weekly Leader' : '1st Champion',
+        label: category === 'daily-pushups' 
+          ? '1st Daily Push-Up Leader' 
+          : category === 'alltime-pushups'
+          ? '1st Lifetime Push-Up Legend'
+          : mode === 'weekly' 
+          ? '1st Weekly Leader' 
+          : '1st Champion',
         scale: 'sm:scale-105 z-10',
       },
       2: {
@@ -99,22 +109,24 @@ export const LeaderboardPodium: React.FC<LeaderboardPodiumProps> = ({
                 background: `linear-gradient(135deg, ${rankMeta.accentColor}, #111622)`,
               }}
             >
-              {entry.photoURL ? (
-                <img
-                  src={entry.photoURL}
-                  alt={entry.displayName}
-                  className="w-full h-full object-cover rounded-[14px]"
-                />
-              ) : (
-                <div className="w-full h-full bg-[#13161F] flex items-center justify-center font-bold text-lg text-white">
-                  {entry.displayName.slice(0, 2).toUpperCase()}
-                </div>
-              )}
+              <div className="w-full h-full rounded-[14px] bg-[#0C0E12] flex items-center justify-center overflow-hidden">
+                {entry.photoURL ? (
+                  <img
+                    src={entry.photoURL}
+                    alt={entry.customAlias || entry.displayName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-xl sm:text-2xl font-black text-white/90">
+                    {(entry.customAlias || entry.displayName).slice(0, 2).toUpperCase()}
+                  </span>
+                )}
+              </div>
             </div>
 
-            {/* Rank Position Badge */}
+            {/* Position Badge Number */}
             <div
-              className={`absolute -bottom-2 -right-1 w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center font-black text-xs shadow-md ${config.badgeBg}`}
+              className={`absolute -bottom-2 -right-2 w-7 h-7 rounded-xl flex items-center justify-center font-black text-xs shadow-lg border border-black/40 ${config.badgeBg}`}
             >
               #{position}
             </div>
@@ -141,24 +153,70 @@ export const LeaderboardPodium: React.FC<LeaderboardPodiumProps> = ({
 
           {/* Stats Bar */}
           <div className="w-full pt-3 border-t border-white/5 flex items-center justify-between text-xs text-slate-300">
-            <div className="text-left">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider">
-                {mode === 'weekly' ? 'Weekly Rate' : 'Discipline'}
-              </div>
-              <div className="font-black text-emerald-400 flex items-center gap-1 text-sm">
-                <Flame className="w-3.5 h-3.5" />
-                {entry.disciplineScore}%
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider">
-                {mode === 'weekly' ? 'Checks' : 'Qualifying'}
-              </div>
-              <div className="font-bold text-white flex items-center justify-end gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
-                {mode === 'weekly' ? `${entry.weeklyCompletedChecks}/${entry.weeklyTargetChecks}` : `${entry.qualifyingWeeks} wks`}
-              </div>
-            </div>
+            {category === 'daily-pushups' ? (
+              <>
+                <div className="text-left">
+                  <div className="text-[10px] text-amber-400 uppercase tracking-wider font-bold">
+                    Today's Push-Ups
+                  </div>
+                  <div className="font-black text-amber-400 flex items-center gap-1 text-sm">
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>{entry.dailyPushups ?? 0} reps</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wider">
+                    Discipline
+                  </div>
+                  <div className="font-bold text-emerald-400 flex items-center justify-end gap-1">
+                    <Flame className="w-3.5 h-3.5" />
+                    <span>{entry.disciplineScore}%</span>
+                  </div>
+                </div>
+              </>
+            ) : category === 'alltime-pushups' ? (
+              <>
+                <div className="text-left">
+                  <div className="text-[10px] text-amber-400 uppercase tracking-wider font-bold">
+                    Lifetime Reps
+                  </div>
+                  <div className="font-black text-amber-400 flex items-center gap-1 text-sm">
+                    <Trophy className="w-3.5 h-3.5" />
+                    <span>{entry.allTimePushups ?? 0} reps</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wider">
+                    Qualifying
+                  </div>
+                  <div className="font-bold text-white flex items-center justify-end gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
+                    <span>{entry.qualifyingWeeks} wks</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-left">
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wider">
+                    {mode === 'weekly' ? 'Weekly Rate' : 'Discipline'}
+                  </div>
+                  <div className="font-black text-emerald-400 flex items-center gap-1 text-sm">
+                    <Flame className="w-3.5 h-3.5" />
+                    {entry.disciplineScore}%
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wider">
+                    {mode === 'weekly' ? 'Checks' : 'Qualifying'}
+                  </div>
+                  <div className="font-bold text-white flex items-center justify-end gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
+                    {mode === 'weekly' ? `${entry.weeklyCompletedChecks}/${entry.weeklyTargetChecks}` : `${entry.qualifyingWeeks} wks`}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -171,17 +229,27 @@ export const LeaderboardPodium: React.FC<LeaderboardPodiumProps> = ({
         <div>
           <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-amber-400" />
-            {mode === 'weekly' ? 'Weekly Discipline Champions' : 'All-Time Champions of the Arena'}
+            {category === 'daily-pushups'
+              ? '🔥 Daily Push-Up Arena Champions'
+              : category === 'alltime-pushups'
+              ? '🏆 All-Time Push-Up Legends'
+              : mode === 'weekly'
+              ? 'Weekly Discipline Champions'
+              : 'All-Time Champions of the Arena'}
           </h3>
           <p className="text-xs text-slate-400">
-            {mode === 'weekly' 
+            {category === 'daily-pushups'
+              ? 'Ranked strictly by verified push-up reps completed today'
+              : category === 'alltime-pushups'
+              ? 'Ranked by lifetime verified push-up repetitions'
+              : mode === 'weekly' 
               ? 'Ranked strictly by active week completion rate percentage'
               : 'Ranked by lifetime warrior Rank Tier, Qualifying Weeks, and consistency'}
           </p>
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row items-center sm:items-end justify-center gap-3 sm:gap-6 pt-4 sm:pt-6 pb-2">
+      <div className="flex flex-col sm:flex-row items-end justify-center gap-4 sm:gap-6 pt-4">
         {renderPodiumCard(second, 2)}
         {renderPodiumCard(first, 1)}
         {renderPodiumCard(third, 3)}
