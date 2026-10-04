@@ -46,7 +46,9 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
       const name = (e.displayName || '').trim().toLowerCase();
       const alias = (e.customAlias || '').trim().toLowerCase();
       const id = (e.userId || '').trim().toLowerCase();
-      return name !== 'just' && alias !== 'just' && id !== 'just';
+      if (name === 'just' || alias === 'just' || id === 'just') return false;
+      if (name === 'warrior' || alias === 'warrior' || id.startsWith('warrior-')) return false;
+      return true;
     });
 
     return [...valid].sort((a, b) => {

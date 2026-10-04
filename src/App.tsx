@@ -220,28 +220,33 @@ export default function App() {
     return () => unsubscribe();
   }, [user?.uid]);
 
-  // Completely delete and purge the "JUST" account locally and remotely
+  // Completely delete and purge the "JUST" and "Warrior" accounts locally and remotely
   useEffect(() => {
     purgeRealtimeLeaderboardByNameOrId('JUST');
     purgeFirestoreLeaderboardByNameOrId('JUST');
+    purgeRealtimeLeaderboardByNameOrId('Warrior');
+    purgeFirestoreLeaderboardByNameOrId('Warrior');
 
     const currentAlias = localStorage.getItem('discipline_user_alias');
-    if (currentAlias && currentAlias.trim().toLowerCase() === 'just') {
+    if (currentAlias && (currentAlias.trim().toLowerCase() === 'just' || currentAlias.trim().toLowerCase() === 'warrior')) {
       localStorage.removeItem('discipline_user_alias');
     }
     const localUid = localStorage.getItem('discipline_local_user_id');
-    if (localUid && localUid.toLowerCase() === 'just') {
+    if (localUid && (localUid.toLowerCase() === 'just' || localUid.toLowerCase().startsWith('warrior'))) {
       localStorage.removeItem('discipline_local_user_id');
     }
     const settings = getLocalLeaderboardSettings();
-    if (settings.customAlias && settings.customAlias.trim().toLowerCase() === 'just') {
+    if (settings.customAlias && (settings.customAlias.trim().toLowerCase() === 'just' || settings.customAlias.trim().toLowerCase() === 'warrior')) {
       const clean = { ...settings, customAlias: '' };
       setLeaderboardSettings(clean);
       saveLocalLeaderboardSettings(clean);
     }
     if (selectedWarrior) {
       const name = (selectedWarrior.customAlias || selectedWarrior.displayName).trim().toLowerCase();
-      if (name === 'just' || selectedWarrior.userId.toLowerCase() === 'just') {
+      if (
+        name === 'just' || selectedWarrior.userId.toLowerCase() === 'just' ||
+        name === 'warrior' || selectedWarrior.userId.toLowerCase().startsWith('warrior')
+      ) {
         setSelectedWarrior(null);
       }
     }
@@ -438,21 +443,20 @@ export default function App() {
     });
   };
 
-  // Auto-publish user progress snapshot to public leaderboard when changes happen
+  // Only publish user progress snapshot to public leaderboard for real signed-in users
   useEffect(() => {
-    const activeUid = user?.uid || localStorage.getItem('discipline_local_user_id') || (() => {
-      const generated = `warrior-${Date.now()}`;
-      localStorage.setItem('discipline_local_user_id', generated);
-      return generated;
-    })();
+    if (!user?.uid) {
+      return;
+    }
 
     const timer = setTimeout(() => {
+      const fallbackName = user.displayName || localStorage.getItem('discipline_user_alias') || (user.email ? user.email.split('@')[0] : 'Competitor');
       publishLeaderboardSnapshot(
-        activeUid,
+        user.uid,
         {
-          displayName: user?.displayName || localStorage.getItem('discipline_user_alias') || 'Warrior',
-          email: user?.email,
-          photoURL: user?.photoURL || localStorage.getItem('discipline_profile_photo_url'),
+          displayName: fallbackName,
+          email: user.email,
+          photoURL: user.photoURL || localStorage.getItem('discipline_profile_photo_url'),
         },
         rankProgress,
         calculatedStats,
@@ -1002,6 +1006,7 @@ export default function App() {
               onAutoCheckExerciseHabit={handleAutoCheckExerciseHabit}
               isTodayExerciseChecked={isTodayExerciseChecked}
               todayName={todayName}
+              currentUser={user}
             />
           </section>
         ) : (

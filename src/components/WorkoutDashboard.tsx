@@ -25,11 +25,13 @@ import {
   PlayCircle
 } from 'lucide-react';
 import { PushUpCameraModal } from './PushUpCameraModal';
+import { recordPushUpsToLeaderboard } from '../services/leaderboard';
 
 interface WorkoutDashboardProps {
   onAutoCheckExerciseHabit: () => void;
   isTodayExerciseChecked: boolean;
   todayName: string;
+  currentUser?: { uid: string; displayName?: string | null; email?: string | null; photoURL?: string | null } | null;
 }
 
 export interface CameraDiagnosticInfo {
@@ -49,6 +51,7 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
   onAutoCheckExerciseHabit,
   isTodayExerciseChecked,
   todayName,
+  currentUser,
 }) => {
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [requireCalibration, setRequireCalibration] = useState(true);
@@ -62,6 +65,17 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
     return parseInt(localStorage.getItem(todayKey) || '0', 10);
   });
   const [justCompletedToast, setJustCompletedToast] = useState<string | null>(null);
+
+  // Sync internal push-up counts with local storage whenever leaderboard updates
+  useEffect(() => {
+    const handleUpdate = () => {
+      const todayKey = `discipline_pushups_${new Date().toISOString().slice(0, 10)}`;
+      setTodayPushups(parseInt(localStorage.getItem(todayKey) || '0', 10));
+      setLifetimePushups(parseInt(localStorage.getItem('discipline_lifetime_pushups') || '0', 10));
+    };
+    window.addEventListener('discipline_leaderboard_updated', handleUpdate);
+    return () => window.removeEventListener('discipline_leaderboard_updated', handleUpdate);
+  }, []);
 
   // Perform pre-flight device & permission inspection
   const runCameraPreflightCheck = async (): Promise<CameraDiagnosticInfo> => {
@@ -121,26 +135,21 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
     setIsCameraModalOpen(true);
   };
 
-  const handleWorkoutCompleted = (reps: number) => {
+  const handleWorkoutCompleted = async (reps: number) => {
     if (reps > 0) {
-      const newLifetime = lifetimePushups + reps;
-      const newToday = todayPushups + reps;
+      // Automatically transmit to both daily and all-time push-up leaderboards in real time
+      const { daily, lifetime } = await recordPushUpsToLeaderboard(reps, currentUser);
       
-      setLifetimePushups(newLifetime);
-      setTodayPushups(newToday);
-      
-      localStorage.setItem('discipline_lifetime_pushups', newLifetime.toString());
-      const todayKey = `discipline_pushups_${new Date().toISOString().slice(0, 10)}`;
-      localStorage.setItem(todayKey, newToday.toString());
-      window.dispatchEvent(new CustomEvent('discipline_leaderboard_updated'));
+      setLifetimePushups(lifetime);
+      setTodayPushups(daily);
 
-      if (reps >= 10 || newToday >= 10) {
+      if (reps >= 10 || daily >= 10) {
         onAutoCheckExerciseHabit();
         setJustCompletedToast(
-          `Logged ${reps} push-ups! Today's physical exercise habit has been automatically verified and marked completed.`
+          `Logged ${reps} push-ups! Synced to daily & all-time push-up leaderboards, and today's physical exercise habit is marked completed.`
         );
       } else {
-        setJustCompletedToast(`Logged ${reps} push-ups! Keep building discipline.`);
+        setJustCompletedToast(`Logged ${reps} push-ups! Automatically transmitted to daily & all-time leaderboards.`);
       }
 
       setTimeout(() => {

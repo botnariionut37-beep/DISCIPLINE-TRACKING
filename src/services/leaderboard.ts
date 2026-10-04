@@ -251,14 +251,16 @@ export function subscribeToLeaderboard(
       .filter(e => e.userId && !e.userId.startsWith('seed-warrior-'))
       .forEach(e => map.set(e.userId, e));
 
-    const isJust = (e: LeaderboardEntry) => {
+    const isExcluded = (e: LeaderboardEntry) => {
       const name = (e.displayName || '').trim().toLowerCase();
       const alias = (e.customAlias || '').trim().toLowerCase();
       const id = (e.userId || '').trim().toLowerCase();
-      return name === 'just' || alias === 'just' || id === 'just';
+      if (name === 'just' || alias === 'just' || id === 'just') return true;
+      if (name === 'warrior' || alias === 'warrior' || id.startsWith('warrior-')) return true;
+      return false;
     };
 
-    const combined = Array.from(map.values()).filter(e => !isJust(e));
+    const combined = Array.from(map.values()).filter(e => !isExcluded(e));
 
     // Filter public or current user entries
     const visible = combined
@@ -509,13 +511,63 @@ export async function purgeWarriorByNameOrId(target: string): Promise<boolean> {
   return true;
 }
 
-// Auto-run push-up reset and removal of JUST account upon initial load
+/**
+ * Automatically transmit push-ups recorded in the workout arena to both daily and all-time leaderboard
+ */
+export async function recordPushUpsToLeaderboard(
+  reps: number,
+  currentUser?: { uid: string; displayName?: string | null; email?: string | null; photoURL?: string | null } | null
+): Promise<{ daily: number; lifetime: number }> {
+  const todayKey = `discipline_pushups_${new Date().toISOString().slice(0, 10)}`;
+  const currentDaily = parseInt(localStorage.getItem(todayKey) || '0', 10);
+  const currentLifetime = parseInt(localStorage.getItem('discipline_lifetime_pushups') || '0', 10);
+
+  if (reps <= 0) {
+    return { daily: currentDaily, lifetime: currentLifetime };
+  }
+
+  const newDaily = currentDaily + reps;
+  const newLifetime = currentLifetime + reps;
+
+  localStorage.setItem(todayKey, newDaily.toString());
+  localStorage.setItem('discipline_lifetime_pushups', newLifetime.toString());
+
+  // 1. If a real authenticated user is signed in, sync immediately to remote RTDB and Firestore
+  if (currentUser?.uid) {
+    const uid = currentUser.uid;
+    try {
+      await updateUserPushUpsInRealtime(uid, newDaily, newLifetime);
+    } catch (err) {
+      console.warn('Realtime push-up sync notice:', err);
+    }
+
+    // 2. Also update in local community storage if an entry exists
+    const stored = getStoredCommunityEntries();
+    const idx = stored.findIndex(e => e.userId === uid);
+    if (idx >= 0) {
+      stored[idx] = {
+        ...stored[idx],
+        dailyPushups: newDaily,
+        allTimePushups: newLifetime,
+        updatedAt: new Date().toISOString()
+      };
+      saveCommunityEntries(stored);
+    }
+  }
+
+  // 3. Dispatch leaderboard event for immediate local UI reactivity across tabs
+  window.dispatchEvent(new CustomEvent(LEADERBOARD_EVENT));
+  return { daily: newDaily, lifetime: newLifetime };
+}
+
+// Auto-run removal of JUST and Warrior placeholder accounts upon initial load
 if (typeof window !== 'undefined') {
   try {
-    resetAllPushUps();
     purgeWarriorByNameOrId('JUST');
+    purgeWarriorByNameOrId('Warrior');
   } catch (e) {
     // Non-blocking
   }
 }
+
 
