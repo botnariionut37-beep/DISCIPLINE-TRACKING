@@ -1,20 +1,9 @@
-# Completed Changes: Remove "Warrior" Account & Auto-Transmit Push-Ups
+# Completed Changes: Removed "Use Cadence Tracker" and "+1 Rep" Buttons
 
-### 1. Completely Removed "Warrior" Account & Disabled Auto-Creation
-- **Disabled Automatic Dummy Account Generation**:
-  - Removed the automatic guest account generator (`warrior-${Date.now()}`) and fallback `'Warrior'` display name in `src/App.tsx`.
-  - The application will **never** automatically add an account on its own. Only real authenticated users who sign in and choose to publish their progress will appear on the leaderboard.
-- **Database & Storage Purge**:
-  - Enhanced `purgeRealtimeLeaderboardByNameOrId('Warrior')` and `purgeFirestoreLeaderboardByNameOrId('Warrior')` to purge any record matching `displayName === 'Warrior'`, `customAlias === 'Warrior'`, or starting with `warrior-`.
-  - Added listeners to actively filter and delete incoming dummy "Warrior" nodes from Firebase Realtime Database and Firestore collections.
-  - Cleared cached `Warrior` keys and entries from `localStorage`.
-  - Excluded any placeholder `Warrior` accounts from the `LeaderboardTable` and podium views.
+1. **Removed "Use Cadence Tracker" Button**:
+   - Deleted the "Use Cadence Tracker" button from `src/components/PushUpCameraModal.tsx` in the pre-workout camera start view.
+   - Cleaned up related UI copy so push-up sessions strictly initialize with genuine AI camera vision tracking.
 
-### 2. Automatic Push-Up Transmission to Daily & All-Time Leaderboards
-- **Direct Real-Time Transmission**:
-  - Built `recordPushUpsToLeaderboard(reps, currentUser)` in `src/services/leaderboard.ts`.
-  - When push-up reps are logged or completed via camera tracking in the Workout Arena, they are instantly recorded in local storage and synced in real time to both:
-    1. **Daily Push-Up Leaderboard** (`dailyPushups` in RTDB & Firestore)
-    2. **All-Time Push-Up Leaderboard** (`allTimePushups` in RTDB & Firestore)
-  - Updated `listenToRealtimeLeaderboard`, `saveUserScoreToLeaderboard`, and `updateUserPushUpsInRealtime` to transmit and stream both `dailyPushups` and `allTimePushups` fields across all clients.
-  - Connected `WorkoutDashboard` to `recordPushUpsToLeaderboard(reps, currentUser)`, providing instant updates with habit verification and toast confirmations.
+2. **Removed "+1 Rep" Button**:
+   - Deleted the manual `+1 Rep` tap button from `src/components/PushUpCameraModal.tsx` during the calibrated workout phase.
+   - All push-ups registered in the Push Up Arena are now strictly executed and counted by real computer vision body tracking (lockout, depth, inflection, and calibration protocols).

@@ -1156,19 +1156,10 @@ export const PushUpCameraModal: React.FC<PushUpCameraModalProps> = ({
                 <button
                   type="button"
                   onClick={() => startCamera(facingMode)}
-                  className="w-full sm:w-auto flex-1 px-6 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-500/25"
+                  className="w-full px-6 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-500/25"
                 >
                   <Camera size={16} />
                   <span>Connect Camera</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={startCadenceTracker}
-                  className="w-full sm:w-auto flex-1 px-5 py-3 rounded-2xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-                >
-                  <Play size={14} />
-                  <span>Use Cadence Tracker</span>
                 </button>
               </div>
 
@@ -1374,18 +1365,6 @@ export const PushUpCameraModal: React.FC<PushUpCameraModalProps> = ({
                 className="ml-auto sm:ml-2 px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-sans transition-colors cursor-pointer"
               >
                 Skip Calibration
-              </button>
-            )}
-
-            {calibrationPhase === 'CALIBRATED' && (
-              <button
-                type="button"
-                onClick={handleManualAddRep}
-                className="ml-auto sm:ml-2 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold border border-white/15 text-xs font-sans transition-colors cursor-pointer flex items-center gap-1.5"
-                title="Manual rep tap"
-              >
-                <Zap size={13} className="text-amber-400" />
-                <span>+1 Rep</span>
               </button>
             )}
           </div>

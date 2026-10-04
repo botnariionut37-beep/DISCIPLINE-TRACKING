@@ -1,6 +1,6 @@
 {
-  "summary":  "Completely removed the 'Warrior' account and disabled automatic account creation. Integrated automatic push-up transmission from the Workout Arena directly to both Daily and All-Time push-up leaderboards in real time.",
-  "updatedAt":  "2026-10-04T17:18:33.759695065Z",
+  "summary":  "Removed the 'Use Cadence Tracker' and '+1 Rep' buttons from the push-up arena engine. All reps must now be genuinely tracked and verified via the AI computer-vision camera engine.",
+  "updatedAt":  "2026-10-04T18:22:45.997918379Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
