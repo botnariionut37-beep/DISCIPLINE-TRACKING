@@ -1,6 +1,6 @@
 {
-  "summary":  "Removed the 'Use Cadence Tracker' and '+1 Rep' buttons from the push-up arena engine. All reps must now be genuinely tracked and verified via the AI computer-vision camera engine.",
-  "updatedAt":  "2026-10-04T18:22:45.997918379Z",
+  "summary":  "Fixed the push-up camera session persistence bug: PushUpCameraModal is now unmounted on close and remounted with a fresh session key on re-entry, and all rep counters, depth progress, stages, and biomechanical refs are wiped immediately upon finishing or opening the camera, preventing duplicate or stale rep submissions without requiring a page refresh.",
+  "updatedAt":  "2026-10-07T19:39:01.828490562Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

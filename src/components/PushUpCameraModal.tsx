@@ -133,6 +133,32 @@ export const PushUpCameraModal: React.FC<PushUpCameraModalProps> = ({
     calibrationPhaseRef.current = calibrationPhase;
   }, [calibrationPhase]);
 
+  // Completely reset rep counts and session tracking states to fresh initial state
+  const resetSessionState = () => {
+    setReps(0);
+    repsRef.current = 0;
+    setIsCompleted(false);
+    stageRef.current = 'UP';
+    setStage('UP');
+    setCurrentAngle(null);
+    setDescentProgress(0);
+    setNoseDepthProgress(0);
+    setPostureState('NO_PERSON');
+    postureStateRef.current = 'NO_PERSON';
+    setCalibrationPhase(requireCalibration ? 'HAND_PLACEMENT' : 'CALIBRATED');
+    calibrationPhaseRef.current = requireCalibration ? 'HAND_PLACEMENT' : 'CALIBRATED';
+    setCountdownRemaining(3);
+    stableHoldStartTimeRef.current = null;
+    topChestYRef.current = null;
+    topNoseYRef.current = null;
+    consecutiveDownFramesRef.current = 0;
+    lastStateTimestampRef.current = 0;
+    setFeedback(requireCalibration ? 'Step 1: Place hands flat on floor beneath chest' : 'Ready for push-ups');
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    if (cadenceIntervalRef.current) clearInterval(cadenceIntervalRef.current);
+    setIsCadenceMode(false);
+  };
+
   // Reset or re-trigger calibration
   const restartCalibration = () => {
     setCalibrationPhase('HAND_PLACEMENT');
@@ -323,6 +349,7 @@ export const PushUpCameraModal: React.FC<PushUpCameraModalProps> = ({
     };
 
     if (isOpen) {
+      resetSessionState();
       chime.init();
       loadPoseLandmarker();
       // Auto-start camera immediately when opened (remembers authorization)
@@ -331,6 +358,7 @@ export const PushUpCameraModal: React.FC<PushUpCameraModalProps> = ({
 
     return () => {
       isCancelled = true;
+      resetSessionState();
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
@@ -982,20 +1010,15 @@ export const PushUpCameraModal: React.FC<PushUpCameraModalProps> = ({
     }, 450);
   };
 
-  const handleManualAddRep = () => {
-    chime.init();
-    const nextReps = reps + 1;
-    setReps(nextReps);
-    if (soundEnabled) chime.playPushUpRep();
-    if (nextReps >= target && !isCompleted) {
-      setIsCompleted(true);
-      if (soundEnabled) chime.playRankUp();
-      confetti({ particleCount: 70, spread: 60 });
-    }
+  const handleFinishSession = () => {
+    const recordedReps = reps;
+    resetSessionState();
+    onCompleteWorkout(recordedReps);
+    onClose();
   };
 
-  const handleFinishSession = () => {
-    onCompleteWorkout(reps);
+  const handleCancelSession = () => {
+    resetSessionState();
     onClose();
   };
 
@@ -1081,7 +1104,7 @@ export const PushUpCameraModal: React.FC<PushUpCameraModalProps> = ({
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleCancelSession}
               className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
             >
               <X size={18} />
@@ -1372,7 +1395,7 @@ export const PushUpCameraModal: React.FC<PushUpCameraModalProps> = ({
           <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleCancelSession}
               className="px-4 py-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 text-xs font-sans transition-colors cursor-pointer"
             >
               Cancel
@@ -1381,15 +1404,18 @@ export const PushUpCameraModal: React.FC<PushUpCameraModalProps> = ({
             <button
               type="button"
               onClick={handleFinishSession}
-              className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl font-sans font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg ${
-                reps >= target
-                  ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-black shadow-emerald-500/25 hover:scale-105'
-                  : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40'
+              disabled={reps <= 0}
+              className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl font-sans font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg ${
+                reps <= 0
+                  ? 'opacity-40 cursor-not-allowed bg-white/5 text-gray-400 border border-white/10'
+                  : reps >= target
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-black shadow-emerald-500/25 hover:scale-105 cursor-pointer'
+                  : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 cursor-pointer'
               }`}
             >
               <Check size={15} className="stroke-[3]" />
               <span>
-                {reps >= target ? `Verify Habit (${reps} Reps)` : `Log ${reps} Reps & Finish`}
+                {reps <= 0 ? 'No Reps Logged' : reps >= target ? `Verify Habit (${reps} Reps)` : `Log ${reps} Reps & Finish`}
               </span>
             </button>
           </div>

@@ -54,6 +54,7 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
   currentUser,
 }) => {
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const [sessionKey, setSessionKey] = useState(0);
   const [requireCalibration, setRequireCalibration] = useState(true);
   const [diagnosticInfo, setDiagnosticInfo] = useState<CameraDiagnosticInfo | null>(null);
 
@@ -132,6 +133,7 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
 
   const handleLaunchCamera = async () => {
     await runCameraPreflightCheck();
+    setSessionKey(k => k + 1);
     setIsCameraModalOpen(true);
   };
 
@@ -389,13 +391,17 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
       </div>
 
       {/* Push-Up Camera Modal with Pre-Workout Calibration */}
-      <PushUpCameraModal
-        isOpen={isCameraModalOpen}
-        onClose={() => setIsCameraModalOpen(false)}
-        onCompleteWorkout={handleWorkoutCompleted}
-        targetReps={20}
-        requireCalibration={requireCalibration}
-      />
+      {isCameraModalOpen && (
+        <PushUpCameraModal
+          key={`camera-session-${sessionKey}`}
+          isOpen={isCameraModalOpen}
+          onClose={() => setIsCameraModalOpen(false)}
+          onCompleteWorkout={handleWorkoutCompleted}
+          targetReps={20}
+          requireCalibration={requireCalibration}
+          currentUser={currentUser}
+        />
+      )}
     </div>
   );
 };
