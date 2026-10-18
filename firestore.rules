@@ -15,28 +15,38 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email != null && (
+        request.auth.token.email == 'botnariionut37@gmail.com' ||
+        request.auth.token.email == 'ibotnari589@gmail.com'
+      );
+    }
+
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128;
     }
 
     // Community Discipline Leaderboard Collection
     match /discipline_leaderboard/{userId} {
-      // Allow public reads if the entry is configured as public, or if reader is the owner
+      // Allow public reads if the entry is configured as public, or if reader is the owner or admin
       allow read: if isValidId(userId) && (
         resource.data.isPublic == true ||
-        (isSignedIn() && request.auth.uid == userId)
+        (isSignedIn() && request.auth.uid == userId) ||
+        isAdmin()
       );
 
-      // Allow creation, updates, and deletion by the authenticated owner
-      allow create, update: if isOwner(userId) && isValidId(userId) &&
-        request.resource.data.userId == request.auth.uid;
+      // Allow creation, updates, and deletion by the authenticated owner or admin
+      allow create, update: if isValidId(userId) && (
+        (isOwner(userId) && request.resource.data.userId == request.auth.uid) ||
+        isAdmin()
+      );
 
-      allow delete: if isOwner(userId) && isValidId(userId);
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
     }
 
     // User Private Habit Tracking Data
     match /discipline_user_data/{userId} {
-      allow read, write: if isOwner(userId) && isValidId(userId);
+      allow read, write: if isValidId(userId) && (isOwner(userId) || isAdmin());
     }
   }
 }

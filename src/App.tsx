@@ -44,6 +44,7 @@ import {
 import { LeaderboardEntry, LeaderboardSettings } from './types/leaderboard';
 import { useAuth } from './context/AuthContext';
 import { useCloudSync } from './hooks/useCloudSync';
+import { fetchWarriorHabitData, saveWarriorHabitData, WarriorDataPayload } from './services/adminService';
 
 // Icons
 import { 
@@ -70,7 +71,11 @@ import {
   LayoutGrid,
   Sun,
   Moon,
-  Dumbbell
+  Dumbbell,
+  Users,
+  UserCheck,
+  RotateCcw,
+  Eye
 } from 'lucide-react';
 
 export default function App() {
@@ -202,6 +207,35 @@ export default function App() {
   const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
   const [leaderboardSettings, setLeaderboardSettings] = useState<LeaderboardSettings>(getLocalLeaderboardSettings);
 
+  // Admin Inspection Mode for other community warriors
+  const [inspectingWarrior, setInspectingWarrior] = useState<LeaderboardEntry | null>(null);
+  const [inspectingWarriorData, setInspectingWarriorData] = useState<WarriorDataPayload | null>(null);
+  const [isLoadingInspectingData, setIsLoadingInspectingData] = useState(false);
+
+  // Load target warrior's actual categories and checks whenever inspectingWarrior changes
+  useEffect(() => {
+    if (!inspectingWarrior) {
+      setInspectingWarriorData(null);
+      return;
+    }
+    let isMounted = true;
+    setIsLoadingInspectingData(true);
+    fetchWarriorHabitData(inspectingWarrior.userId)
+      .then((data) => {
+        if (isMounted) {
+          setInspectingWarriorData(data);
+          setIsLoadingInspectingData(false);
+        }
+      })
+      .catch((e) => {
+        console.warn('Could not load inspecting warrior data:', e);
+        if (isMounted) setIsLoadingInspectingData(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [inspectingWarrior?.userId]);
+
   const { syncStatus, lastSyncedAt, pushToCloud, forceSync } = useCloudSync({
     user,
     categories,
@@ -252,10 +286,31 @@ export default function App() {
     }
   }, [selectedWarrior]);
 
-  // Compute live scores for the current selected week
+  // Dynamic datasets: switches cleanly to inspecting warrior if admin has selected another user
+  const displayCategories = useMemo(() => {
+    if (inspectingWarrior && inspectingWarriorData) {
+      return inspectingWarriorData.categories;
+    }
+    return categories;
+  }, [inspectingWarrior, inspectingWarriorData, categories]);
+
+  const displayAllChecks = useMemo(() => {
+    if (inspectingWarrior && inspectingWarriorData) {
+      return inspectingWarriorData.checks;
+    }
+    return checks;
+  }, [inspectingWarrior, inspectingWarriorData, checks]);
+
   const weekChecks = useMemo(() => {
-    return checks[weekKey] || {};
-  }, [checks, weekKey]);
+    return displayAllChecks[weekKey] || {};
+  }, [displayAllChecks, weekKey]);
+
+  const displayBonusWeeks = useMemo(() => {
+    if (inspectingWarrior && inspectingWarriorData) {
+      return inspectingWarriorData.bonusQualifyingWeeks;
+    }
+    return bonusQualifyingWeeks;
+  }, [inspectingWarrior, inspectingWarriorData, bonusQualifyingWeeks]);
 
   // Account start / first login date for trend origin and score evaluation
   const accountStartDate = useMemo(() => {
@@ -271,8 +326,15 @@ export default function App() {
 
   // Compute live discipline ranking progress: begins at Bronze, advances with weeks >= 80%, downgrades with weeks < 50%
   const rankProgress = useMemo(() => {
-    return calculateRankProgress(checks, categories, weekKey, bonusQualifyingWeeks, rankOverride, accountStartDate);
-  }, [checks, categories, weekKey, bonusQualifyingWeeks, rankOverride, accountStartDate]);
+    return calculateRankProgress(
+      displayAllChecks, 
+      displayCategories, 
+      weekKey, 
+      displayBonusWeeks, 
+      inspectingWarrior ? null : rankOverride, 
+      accountStartDate
+    );
+  }, [displayAllChecks, displayCategories, weekKey, displayBonusWeeks, inspectingWarrior, rankOverride, accountStartDate]);
 
   // Detect and celebrate rank upgrades OR play feedback on downgrades
   const prevRankIndexRef = useRef<number>(rankProgress.currentRank.index);
@@ -336,7 +398,7 @@ export default function App() {
     let completed = 0;
     const categoryCompletions: Record<string, { completed: number; total: number; rate: number; currentStreak: number }> = {};
     
-    categories.forEach(cat => {
+    displayCategories.forEach(cat => {
       const catCheckObj = weekChecks[cat.id] || {};
       let catCompleted = 0;
       DAYS_OF_WEEK.forEach(day => {
@@ -354,7 +416,7 @@ export default function App() {
       };
     });
 
-    const total = categories.length * 7;
+    const total = displayCategories.length * 7;
     const weeklyRate = total > 0 ? (completed / total) * 100 : 0;
 
     return {
@@ -364,7 +426,7 @@ export default function App() {
       dayCompletions: {} as any,
       categoryCompletions
     };
-  }, [categories, weekChecks]);
+  }, [displayCategories, weekChecks]);
 
   const { completedCount, totalPossibleCount, weeklyRate: disciplineRate } = calculatedStats;
 
@@ -376,20 +438,20 @@ export default function App() {
   // Dedicated Daily Discipline Rate calculation for today
   const dailyStats = useMemo(() => {
     let todayCompleted = 0;
-    const activeWeekChecks = checks[currentRealWeekKey] || {};
-    categories.forEach((cat) => {
+    const activeWeekChecks = displayAllChecks[currentRealWeekKey] || {};
+    displayCategories.forEach((cat) => {
       if (activeWeekChecks[cat.id]?.[todayName]) {
         todayCompleted++;
       }
     });
-    const totalCategories = categories.length;
+    const totalCategories = displayCategories.length;
     const dailyRate = totalCategories > 0 ? Math.round((todayCompleted / totalCategories) * 100) : 0;
     return {
       todayCompleted,
       totalCategories,
       dailyRate,
     };
-  }, [checks, categories, currentRealWeekKey, todayName]);
+  }, [displayAllChecks, displayCategories, currentRealWeekKey, todayName]);
 
   // Find exercise routine category for automatic habit sync
   const exerciseCategory = useMemo(() => {
@@ -486,8 +548,42 @@ export default function App() {
     }
   };
 
-  // Handle checking a day
+  // Handle checking a day (supports both personal account and Admin inspecting other warriors)
   const handleToggleCheck = (categoryId: string, day: DayOfWeek) => {
+    chime.init();
+    chime.playCheck();
+
+    // If an admin is inspecting another warrior:
+    if (inspectingWarrior && inspectingWarriorData) {
+      const currentWeekData = inspectingWarriorData.checks[weekKey] || {};
+      const catChecks = currentWeekData[categoryId] || {};
+      const currentVal = !catChecks[day];
+
+      const updatedWeekData = {
+        ...currentWeekData,
+        [categoryId]: {
+          ...catChecks,
+          [day]: currentVal
+        }
+      };
+
+      const updatedAllChecks: WeeklyChecks = {
+        ...inspectingWarriorData.checks,
+        [weekKey]: updatedWeekData
+      };
+
+      const updatedPayload: WarriorDataPayload = {
+        ...inspectingWarriorData,
+        checks: updatedAllChecks
+      };
+
+      setInspectingWarriorData(updatedPayload);
+      saveWarriorHabitData(inspectingWarrior.userId, updatedPayload, inspectingWarrior).catch(e => {
+        console.warn('Error saving warrior check via admin:', e);
+      });
+      return;
+    }
+
     setChecks(prev => {
       const updated = { ...prev };
       
@@ -617,12 +713,21 @@ export default function App() {
   };
 
   const handleClearWeekChecks = () => {
+    if (!isAdmin) return;
+    if (inspectingWarrior && inspectingWarriorData) {
+      const updatedChecks = { ...inspectingWarriorData.checks, [weekKey]: {} };
+      const updatedPayload: WarriorDataPayload = { ...inspectingWarriorData, checks: updatedChecks };
+      setInspectingWarriorData(updatedPayload);
+      saveWarriorHabitData(inspectingWarrior.userId, updatedPayload, inspectingWarrior).catch(() => {});
+      return;
+    }
     setChecks(prev => {
       const updated = { ...prev };
       if (updated[weekKey]) {
         updated[weekKey] = {};
       }
       localStorage.setItem('discipline_checks', JSON.stringify(updated));
+      pushToCloud(categories, updated, bonusQualifyingWeeks);
       return updated;
     });
   };
@@ -1048,34 +1153,109 @@ export default function App() {
               </div>
             </section>
 
+            {/* Admin Multi-Warrior Perspective Bar */}
+            {isAdmin && (
+              <div className="p-3 sm:p-4 rounded-2xl bg-[#0E121B] border border-amber-500/20 flex flex-col md:flex-row items-center justify-between gap-3 shadow-lg">
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                  <span className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+                    <Users size={16} />
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-white uppercase tracking-wider font-mono">
+                        Admin Habit Inspector
+                      </span>
+                      {inspectingWarrior ? (
+                        <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded font-bold">
+                          Inspecting: {inspectingWarrior.customAlias || inspectingWarrior.displayName}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded font-bold">
+                          Viewing: My Account
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-gray-400">
+                      {inspectingWarrior 
+                        ? `You have full override control to inspect and toggle ${inspectingWarrior.customAlias || inspectingWarrior.displayName}'s past and future boundaries.`
+                        : "Switch perspective to inspect and check any community warrior's past and future habit boundaries."}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+                  <div className="relative flex-1 sm:flex-none">
+                    <select
+                      value={inspectingWarrior?.userId || ''}
+                      onChange={(e) => {
+                        const targetId = e.target.value;
+                        if (!targetId) {
+                          setInspectingWarrior(null);
+                        } else {
+                          const found = leaderboardEntries.find(entry => entry.userId === targetId);
+                          if (found) setInspectingWarrior(found);
+                        }
+                      }}
+                      className="w-full sm:w-auto bg-[#141824] text-white border border-white/10 text-xs rounded-xl px-3 py-2 pr-8 focus:outline-none focus:border-amber-500/50 cursor-pointer font-medium"
+                    >
+                      <option value="">Myself (Personal Tracker)</option>
+                      {leaderboardEntries
+                        .filter(e => e.userId !== user?.uid)
+                        .map(e => (
+                          <option key={e.userId} value={e.userId}>
+                            Warrior: {e.customAlias || e.displayName} ({e.rankName} · {e.disciplineScore}%)
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {inspectingWarrior && (
+                    <button
+                      type="button"
+                      onClick={() => setInspectingWarrior(null)}
+                      className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 shrink-0"
+                      title="Return to your personal habit tracker"
+                    >
+                      <RotateCcw size={13} />
+                      <span className="hidden sm:inline">My Profile</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Core Daily Execution Matrix grid */}
             <section id="grid-matrix-section">
-              <WeeklyGrid 
-                categories={categories} 
-                checks={weekChecks} 
-                weekKey={weekKey}
-                onToggleCheck={handleToggleCheck}
-                isAdmin={isAdmin}
-                onEditCategoryTrigger={(cat) => {
-                  // Scroll to admin and open edit modal
-                  const el = document.getElementById('category-admin-section');
-                  el?.scrollIntoView({ behavior: 'smooth' });
-                  // Set a short timeout to let scrolling complete
-                  setTimeout(() => {
-                    // Find and trigger edit modal button
-                    const btn = document.querySelector(`#cat-item-${cat.id} button[title="Edit category"]`) as HTMLButtonElement;
-                    btn?.click();
-                  }, 400);
-                }}
-              />
+              {isLoadingInspectingData ? (
+                <div className="p-12 text-center text-xs text-slate-400 border border-white/10 rounded-2xl bg-[#0E121B] animate-pulse">
+                  Loading warrior boundaries from cloud...
+                </div>
+              ) : (
+                <WeeklyGrid 
+                  categories={displayCategories} 
+                  checks={weekChecks} 
+                  weekKey={weekKey}
+                  onToggleCheck={handleToggleCheck}
+                  isAdmin={isAdmin}
+                  onEditCategoryTrigger={(cat) => {
+                    if (inspectingWarrior) return;
+                    const el = document.getElementById('category-admin-section');
+                    el?.scrollIntoView({ behavior: 'smooth' });
+                    setTimeout(() => {
+                      const btn = document.querySelector(`#cat-item-${cat.id} button[title="Edit category"]`) as HTMLButtonElement;
+                      btn?.click();
+                    }, 400);
+                  }}
+                />
+              )}
             </section>
 
             {/* Categorized Progress and Stats Breakdowns */}
             <section id="insights-section">
               <DisciplineStatsBreakdown 
-                categories={categories} 
+                categories={displayCategories} 
                 checks={weekChecks} 
-                allChecks={checks}
+                allChecks={displayAllChecks}
                 weekKey={weekKey}
                 rankProgress={rankProgress}
                 onOpenLadder={() => setIsRankLadderOpen(true)}
@@ -1085,12 +1265,27 @@ export default function App() {
 
             {/* Habits Categories Administration Panel */}
             <section ref={categoryAdminRef}>
-              <CategoryAdmin 
-                categories={categories}
-                onAddCategory={handleAddCategory}
-                onEditCategory={handleEditCategory}
-                onDeleteCategory={handleDeleteCategory}
-              />
+              {inspectingWarrior ? (
+                <div className="p-5 rounded-2xl bg-[#0E121B] border border-white/10 text-center text-xs text-gray-400">
+                  <p className="font-semibold text-slate-300">
+                    Category management is paused while inspecting {inspectingWarrior.customAlias || inspectingWarrior.displayName}.
+                  </p>
+                  <button
+                    onClick={() => setInspectingWarrior(null)}
+                    className="mt-2.5 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-medium transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <RotateCcw size={13} />
+                    <span>Return to My Profile to Manage Categories</span>
+                  </button>
+                </div>
+              ) : (
+                <CategoryAdmin 
+                  categories={categories}
+                  onAddCategory={handleAddCategory}
+                  onEditCategory={handleEditCategory}
+                  onDeleteCategory={handleDeleteCategory}
+                />
+              )}
             </section>
           </>
         )}
@@ -1392,6 +1587,12 @@ export default function App() {
         onClose={() => setSelectedWarrior(null)}
         warrior={selectedWarrior}
         isCurrentUser={selectedWarrior?.userId === user?.uid}
+        isAdmin={isAdmin}
+        onInspectOnMainGrid={(warrior) => {
+          setInspectingWarrior(warrior);
+          setActiveTab('matrix');
+          setSelectedWarrior(null);
+        }}
       />
 
       {/* Leaderboard Settings & Privacy Modal */}

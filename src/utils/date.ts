@@ -25,6 +25,13 @@ export function getWeekKey(date: Date): string {
 }
 
 /**
+ * Returns the current real-world weekKey (e.g., "2026-W42")
+ */
+export function getCurrentWeekKey(): string {
+  return getWeekKey(new Date());
+}
+
+/**
  * Parses a weekKey (e.g. "2026-W24") and returns the Monday of that week
  */
 export function getMondayOfKey(weekKey: string): Date {
